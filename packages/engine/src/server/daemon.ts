@@ -63,6 +63,14 @@ export function createRetuneDaemon(port = 49221) {
     res.end();
   });
 
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[Retune Daemon] Port ${port} is already in use; reusing existing daemon.`);
+    } else {
+      console.warn('[Retune Daemon] Server error:', err.message);
+    }
+  });
+
   server.listen(port, '127.0.0.1');
   return server;
 }

@@ -263,7 +263,7 @@
     "build": "tsc -p tsconfig.json && node scripts/bundle.mjs && node scripts/install-local.mjs",
     "install:ide": "node scripts/install-local.mjs",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run src",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

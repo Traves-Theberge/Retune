@@ -52,11 +52,12 @@ export function buildWebviewHtml(
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       ${baseTag}
       <title>Retune</title>
-      <script src="https://cdn.tailwindcss.com"></script>
       ${styleTag}
+      <script src="https://cdn.tailwindcss.com" async defer></script>
       <script>
         window.RETUNE_VIEW_MODE = "${viewMode}";
-        const vscode = acquireVsCodeApi();
+        const vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : undefined;
+        window.vscode = vscode;
       </script>
     </head>
     <body class="bg-zinc-950 text-zinc-100">

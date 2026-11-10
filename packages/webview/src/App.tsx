@@ -151,9 +151,7 @@ export function App() {
 
   const [showSidebarSplit, setShowSidebarSplit] = useState<boolean>(isStandaloneBrowser);
   const [isDark, setIsDark] = useState<boolean>(true);
-  const [meta, setMeta] = useState<ComponentMetadata | null>(
-    isStandaloneBrowser ? DEMO_META : null
-  );
+  const [meta, setMeta] = useState<ComponentMetadata | null>(DEMO_META);
   const [config, setConfig] = useState<RetuneExtensionConfig>(DEFAULT_CONFIG);
   const [stageState, setStageState] = useState<StageState>(DEFAULT_STAGE_STATE);
 

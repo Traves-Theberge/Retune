@@ -1,4 +1,4 @@
-import { createServer, ViteDevServer } from 'vite';
+import type { ViteDevServer } from 'vite';
 import { resolveWorkspaceAlias } from './module-resolver';
 
 export interface SandboxServerOptions {
@@ -10,6 +10,7 @@ export async function createSandboxViteServer(
   options: SandboxServerOptions
 ): Promise<ViteDevServer> {
   const { workspaceRoot, port = 5174 } = options;
+  const { createServer } = await import('vite');
 
   const server = await createServer({
     root: workspaceRoot,

@@ -11,14 +11,7 @@ let daemonInstance: ReturnType<typeof createRetuneDaemon> | undefined;
 export function activate(context: vscode.ExtensionContext) {
   const config = getRetuneConfig();
 
-  // 1. Boot local Retune Daemon for Scalar & AST endpoints
-  try {
-    daemonInstance = createRetuneDaemon(config.daemonPort);
-  } catch (e) {
-    console.warn('Retune daemon failed to bind port (may already be running):', e);
-  }
-
-  // 2. Register Sidebar Webview Provider (Params, Tone & Configuration)
+  // 1. Register Sidebar Webview Provider FIRST so the Sidebar never hangs on load
   const sidebarProvider = new RetuneSidebarProvider(context.extensionUri);
   const sidebarDisposable = vscode.window.registerWebviewViewProvider(
     RetuneSidebarProvider.viewType,
@@ -26,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
     { webviewOptions: { retainContextWhenHidden: true } }
   );
 
-  // 3. Register Editor Tab & Split Stage Commands + CodeLens Provider
+  // 2. Register Editor Tab & Split Stage Commands + CodeLens Provider
   const stageCommands = registerStageCommands(context);
   const codeLensProvider = vscode.languages.registerCodeLensProvider(
     [
@@ -35,6 +28,13 @@ export function activate(context: vscode.ExtensionContext) {
     ],
     new RetuneCodeLensProvider()
   );
+
+  // 3. Boot local Retune Daemon for Scalar & AST endpoints (non-blocking)
+  try {
+    daemonInstance = createRetuneDaemon(config.daemonPort);
+  } catch (e) {
+    console.warn('Retune daemon failed to bind port (may already be running):', e);
+  }
 
   // 4. Sync initial active .tsx/.jsx editor if open
   if (

@@ -47,6 +47,20 @@ export class StagePanel {
   }
 
   public static getActiveMetadata(): ComponentMetadata | null {
+    if (!StagePanel._activeDocument) {
+      const candidate =
+        vscode.window.activeTextEditor?.document ||
+        vscode.window.visibleTextEditors.find(
+          (ed) =>
+            ed.document.fileName.endsWith('.tsx') || ed.document.fileName.endsWith('.jsx')
+        )?.document;
+      if (
+        candidate &&
+        (candidate.fileName.endsWith('.tsx') || candidate.fileName.endsWith('.jsx'))
+      ) {
+        StagePanel._activeDocument = candidate;
+      }
+    }
     const doc = StagePanel._activeDocument;
     if (!doc) return null;
     const text = doc.getText();

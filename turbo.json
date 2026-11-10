@@ -3,7 +3,11 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", "webview-dist/**"]
+    },
+    "retune-vscode#build": {
+      "dependsOn": ["^build", "@retune/webview#build"],
+      "outputs": ["dist/**", "webview-dist/**"]
     },
     "dev": {
       "cache": false,
@@ -16,4 +20,3 @@
     "lint": {}
   }
 }
-

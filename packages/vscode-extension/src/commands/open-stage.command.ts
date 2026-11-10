@@ -1,38 +1,108 @@
 import * as vscode from 'vscode';
 import { StagePanel } from '../providers/stage-panel';
 
-function isReactDocument(doc?: vscode.TextDocument): doc is vscode.TextDocument {
-  if (!doc) return false;
-  return doc.fileName.endsWith('.tsx') || doc.fileName.endsWith('.jsx');
+async function resolveTargetDocument(uri?: vscode.Uri): Promise<vscode.TextDocument | undefined> {
+  if (uri && uri.scheme === 'file') {
+    try {
+      return await vscode.workspace.openTextDocument(uri);
+    } catch {
+      // Fallback to active editor below
+    }
+  }
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    return editor.document;
+  }
+  return undefined;
+}
+
+function extractSymbolAtCursor(editor?: vscode.TextEditor): string | undefined {
+  if (!editor) return undefined;
+  const doc = editor.document;
+  const selection = editor.selection;
+  if (!selection.isEmpty) {
+    const selectedText = doc.getText(selection).trim();
+    const jsxMatch = /^<?([A-Za-z_][A-Za-z0-9_.]*)/.exec(selectedText);
+    if (jsxMatch) return jsxMatch[1];
+  }
+  const wordRange = doc.getWordRangeAtPosition(selection.active, /[A-Za-z_][A-Za-z0-9_.]*/);
+  if (wordRange) {
+    return doc.getText(wordRange);
+  }
+  return undefined;
 }
 
 export function registerStageCommands(context: vscode.ExtensionContext): vscode.Disposable[] {
-  const openStage = vscode.commands.registerCommand('retune.openStage', () => {
-    const editor = vscode.window.activeTextEditor;
-    if (editor && isReactDocument(editor.document)) {
-      StagePanel.render(context.extensionUri, editor.document);
-    } else {
-      StagePanel.render(context.extensionUri, undefined);
+  const openStage = vscode.commands.registerCommand('retune.openStage', async (uri?: vscode.Uri) => {
+    const doc = await resolveTargetDocument(uri);
+    const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+    StagePanel.render(context.extensionUri, doc, { targetElement });
+  });
+
+  const tuneComponentAtCursor = vscode.commands.registerCommand(
+    'retune.tuneComponentAtCursor',
+    async (uri?: vscode.Uri) => {
+      const doc = await resolveTargetDocument(uri);
+      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      StagePanel.render(context.extensionUri, doc, {
+        tab: 'stage',
+        targetElement,
+      });
     }
-  });
+  );
 
-  const openStageTab = vscode.commands.registerCommand('retune.openStageTab', () => {
-    const editor = vscode.window.activeTextEditor;
-    const doc = editor && isReactDocument(editor.document) ? editor.document : undefined;
-    StagePanel.render(context.extensionUri, doc, { openMode: 'tab', tab: 'stage' });
-  });
+  const openStageTab = vscode.commands.registerCommand(
+    'retune.openStageTab',
+    async (uri?: vscode.Uri) => {
+      const doc = await resolveTargetDocument(uri);
+      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      StagePanel.render(context.extensionUri, doc, {
+        openMode: 'tab',
+        tab: 'stage',
+        targetElement,
+      });
+    }
+  );
 
-  const openStageSplit = vscode.commands.registerCommand('retune.openStageSplit', () => {
-    const editor = vscode.window.activeTextEditor;
-    const doc = editor && isReactDocument(editor.document) ? editor.document : undefined;
-    StagePanel.render(context.extensionUri, doc, { openMode: 'split', tab: 'stage' });
-  });
+  const openStageSplit = vscode.commands.registerCommand(
+    'retune.openStageSplit',
+    async (uri?: vscode.Uri) => {
+      const doc = await resolveTargetDocument(uri);
+      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      StagePanel.render(context.extensionUri, doc, {
+        openMode: 'split',
+        tab: 'stage',
+        targetElement,
+      });
+    }
+  );
 
-  const openScalarApi = vscode.commands.registerCommand('retune.openScalarApi', () => {
-    const editor = vscode.window.activeTextEditor;
-    const doc = editor && isReactDocument(editor.document) ? editor.document : undefined;
-    StagePanel.render(context.extensionUri, doc, { tab: 'api' });
-  });
+  const inspectAstTab = vscode.commands.registerCommand(
+    'retune.inspectAstTab',
+    async (uri?: vscode.Uri) => {
+      const doc = await resolveTargetDocument(uri);
+      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      StagePanel.render(context.extensionUri, doc, {
+        tab: 'ast',
+        targetElement,
+      });
+    }
+  );
 
-  return [openStage, openStageTab, openStageSplit, openScalarApi];
+  const openScalarApi = vscode.commands.registerCommand(
+    'retune.openScalarApi',
+    async (uri?: vscode.Uri) => {
+      const doc = await resolveTargetDocument(uri);
+      StagePanel.render(context.extensionUri, doc, { tab: 'api' });
+    }
+  );
+
+  return [
+    openStage,
+    tuneComponentAtCursor,
+    openStageTab,
+    openStageSplit,
+    inspectAstTab,
+    openScalarApi,
+  ];
 }

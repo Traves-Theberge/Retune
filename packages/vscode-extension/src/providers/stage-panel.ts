@@ -13,7 +13,7 @@ import {
   HostMessage,
 } from '@retune/core';
 import { getRetuneConfig, updateRetuneConfig } from '../config/extension-config';
-import { buildWebviewHtml } from './webview-html';
+import { buildWebviewHtml, getWebviewDistDir } from './webview-html';
 
 export class StagePanel {
   public static currentPanel: StagePanel | undefined;
@@ -64,7 +64,7 @@ export class StagePanel {
   public static render(
     extensionUri: vscode.Uri,
     document?: vscode.TextDocument,
-    options?: { openMode?: StageOpenMode; tab?: StageTabId }
+    options?: { openMode?: StageOpenMode; tab?: StageTabId; targetElement?: string }
   ) {
     const config = getRetuneConfig();
     const openMode = options?.openMode || config.openMode;
@@ -75,10 +75,11 @@ export class StagePanel {
       StagePanel.setActiveDocument(document);
     }
 
-    if (options?.tab) {
+    if (options?.tab || options?.targetElement) {
       StagePanel._stageState = {
         ...StagePanel._stageState,
-        activeTab: options.tab,
+        ...(options.tab ? { activeTab: options.tab } : {}),
+        ...(options.targetElement ? { targetElement: options.targetElement } : {}),
       };
     }
 
@@ -101,6 +102,7 @@ export class StagePanel {
         retainContextWhenHidden: true,
         localResourceRoots: [
           extensionUri,
+          vscode.Uri.file(getWebviewDistDir(extensionUri)),
           vscode.Uri.file(path.resolve(extensionUri.fsPath, '..', 'webview', 'dist')),
         ],
       }

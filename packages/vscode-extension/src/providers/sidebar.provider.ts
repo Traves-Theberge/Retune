@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { HostMessage, WebviewMessage } from '@retune/core';
 import { getRetuneConfig } from '../config/extension-config';
-import { buildWebviewHtml } from './webview-html';
+import { buildWebviewHtml, getWebviewDistDir } from './webview-html';
 import { StagePanel } from './stage-panel';
 
 export class RetuneSidebarProvider implements vscode.WebviewViewProvider {
@@ -43,6 +43,7 @@ export class RetuneSidebarProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [
         this._extensionUri,
+        vscode.Uri.file(getWebviewDistDir(this._extensionUri)),
         vscode.Uri.file(path.resolve(this._extensionUri.fsPath, '..', 'webview', 'dist')),
       ],
     };

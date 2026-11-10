@@ -41,6 +41,7 @@ export interface ComponentMetadata {
 }
 
 export interface StageState {
+  targetElement?: string;
   selectedVariants: Record<string, string>;
   propValues: Record<string, string | boolean | number>;
   harmonicsClass: string;

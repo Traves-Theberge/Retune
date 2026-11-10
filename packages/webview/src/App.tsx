@@ -229,9 +229,10 @@ export function App() {
   const handleUpdateHarmonics = async (newClasses: string, commit: boolean) => {
     updateStageState({ harmonicsClass: newClasses });
     if (commit && meta) {
+      const targetComp = stageState.targetElement || meta.componentName;
       postToHost({
         type: 'MUTATE_CLASSES',
-        payload: { componentName: meta.componentName, className: newClasses },
+        payload: { componentName: targetComp, className: newClasses },
       });
 
       // In standalone browser mode, also call the live local Retune Daemon AST mutation endpoint!
@@ -242,7 +243,7 @@ export function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileContent: meta.rawSource,
-              componentName: meta.componentName,
+              componentName: targetComp,
               className: newClasses,
             }),
           });
@@ -432,10 +433,19 @@ export function App() {
 
               <ViewportFrame
                 componentName={meta?.componentName}
+                targetElement={stageState.targetElement}
                 computedClass={computedPreviewClass}
                 viewport={stageState.viewport}
                 showGrid={stageState.showGrid}
                 propValues={stageState.propValues}
+                onSyncAst={() => handleUpdateHarmonics(stageState.harmonicsClass, true)}
+                onResetVariants={() =>
+                  updateStageState({
+                    selectedVariants: { ...(meta?.cva.defaultVariants || {}) },
+                  })
+                }
+                onSelectViewport={(vp) => updateStageState({ viewport: vp })}
+                onSwitchTab={(tab) => updateStageState({ activeTab: tab })}
               />
 
               <HarmonicsBar

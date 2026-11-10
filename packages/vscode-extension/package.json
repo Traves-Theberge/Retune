@@ -4,6 +4,7 @@
   "description": "Zero-config visual component tuner, CVA variant inspector, and Scalar-powered API console for VS Code.",
   "version": "1.0.0",
   "publisher": "retune",
+  "license": "MIT",
   "categories": [
     "Visualization",
     "Programming Languages",
@@ -32,12 +33,17 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:typescriptreact",
     "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:javascript",
     "onView:retune.sidebarView",
     "onCommand:retune.openStage",
+    "onCommand:retune.tuneComponentAtCursor",
     "onCommand:retune.openStageTab",
     "onCommand:retune.openStageSplit",
+    "onCommand:retune.inspectAstTab",
     "onCommand:retune.openScalarApi"
   ],
   "contributes": {
@@ -61,6 +67,13 @@
         }
       ]
     },
+    "submenus": [
+      {
+        "id": "retune.contextSubmenu",
+        "label": "Retune Component",
+        "icon": "$(symbol-color)"
+      }
+    ],
     "commands": [
       {
         "command": "retune.openStage",
@@ -69,16 +82,28 @@
         "icon": "$(symbol-color)"
       },
       {
+        "command": "retune.tuneComponentAtCursor",
+        "title": "Retune: Tune Component in Stage",
+        "category": "Retune",
+        "icon": "$(wand)"
+      },
+      {
         "command": "retune.openStageTab",
         "title": "Retune: Open Visual Stage in Editor Tab",
         "category": "Retune",
-        "icon": "$( preview )"
+        "icon": "$(preview)"
       },
       {
         "command": "retune.openStageSplit",
         "title": "Retune: Open Visual Stage in Split Editor",
         "category": "Retune",
         "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "retune.inspectAstTab",
+        "title": "Retune: Inspect Component AST & Props",
+        "category": "Retune",
+        "icon": "$(symbol-structure)"
       },
       {
         "command": "retune.openScalarApi",
@@ -91,25 +116,72 @@
       "editor/title": [
         {
           "command": "retune.openStage",
-          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact || editorLangId == typescript || editorLangId == javascript",
           "group": "navigation@1"
         },
         {
           "command": "retune.openStageTab",
-          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact || editorLangId == typescript || editorLangId == javascript",
           "group": "navigation@2"
         }
       ],
       "editor/context": [
         {
-          "command": "retune.openStage",
-          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "command": "retune.tuneComponentAtCursor",
+          "when": "editorTextFocus",
           "group": "navigation@1"
         },
         {
-          "command": "retune.openScalarApi",
-          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "command": "retune.openStage",
+          "when": "editorTextFocus",
           "group": "navigation@2"
+        },
+        {
+          "submenu": "retune.contextSubmenu",
+          "when": "editorTextFocus",
+          "group": "navigation@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "retune.openStage",
+          "when": "resourceExtname == .tsx || resourceExtname == .jsx || resourceExtname == .ts || resourceExtname == .js",
+          "group": "navigation@1"
+        },
+        {
+          "submenu": "retune.contextSubmenu",
+          "when": "resourceExtname == .tsx || resourceExtname == .jsx || resourceExtname == .ts || resourceExtname == .js",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "retune.openStage",
+          "when": "resourceExtname == .tsx || resourceExtname == .jsx || resourceExtname == .ts || resourceExtname == .js",
+          "group": "1_open@1"
+        },
+        {
+          "submenu": "retune.contextSubmenu",
+          "when": "resourceExtname == .tsx || resourceExtname == .jsx || resourceExtname == .ts || resourceExtname == .js",
+          "group": "1_open@2"
+        }
+      ],
+      "retune.contextSubmenu": [
+        {
+          "command": "retune.openStageSplit",
+          "group": "1_stage@1"
+        },
+        {
+          "command": "retune.openStageTab",
+          "group": "1_stage@2"
+        },
+        {
+          "command": "retune.inspectAstTab",
+          "group": "2_inspect@1"
+        },
+        {
+          "command": "retune.openScalarApi",
+          "group": "2_inspect@2"
         }
       ],
       "view/title": [
@@ -125,7 +197,7 @@
         "command": "retune.openStage",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r",
-        "when": "editorTextFocus && (editorLangId == typescriptreact || editorLangId == javascriptreact)"
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {
@@ -188,7 +260,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/bundle.mjs && node scripts/install-local.mjs",
+    "install:ide": "node scripts/install-local.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit"
@@ -200,6 +273,7 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/vscode": "^1.145.0",
+    "esbuild": "^0.25.0",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   }

@@ -7,7 +7,7 @@ export interface HarmonicsBarProps {
 }
 
 const QUICK_TOKENS = [
-  'shadow-xl',
+  'shadow-lg',
   'rounded-full',
   'ring-2 ring-indigo-500',
   'scale-105',
@@ -29,9 +29,11 @@ export function HarmonicsBar({ value, onChange, onCommit }: HarmonicsBarProps) {
   };
 
   return (
-    <div className="p-3 border-t border-zinc-800 bg-zinc-900/60 flex flex-col gap-2">
+    <div className="px-3 py-2 border-t border-zinc-800/80 bg-[#0c0c10] flex flex-col gap-1.5 select-none">
       <div className="flex items-center gap-2">
-        <span className="text-xs font-mono font-semibold text-indigo-400">Harmonics:</span>
+        <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 shrink-0">
+          className
+        </span>
         <input
           type="text"
           value={value}
@@ -40,21 +42,18 @@ export function HarmonicsBar({ value, onChange, onCommit }: HarmonicsBarProps) {
           onKeyDown={(e) =>
             e.key === 'Enter' && onCommit((e.target as HTMLInputElement).value)
           }
-          placeholder="Enter Tailwind classes..."
-          className="flex-1 bg-zinc-800/90 border border-zinc-700 rounded-md px-3 py-1.5 text-xs font-mono text-zinc-100 outline-none focus:border-indigo-500"
+          placeholder="Tailwind utility classes..."
+          className="flex-1 bg-[#141419] border border-zinc-800 focus:border-indigo-500 rounded px-2.5 py-1 text-[11px] font-mono text-zinc-100 outline-none transition"
         />
         <button
           type="button"
           onClick={() => onCommit(value)}
-          className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition"
+          className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium transition shrink-0"
         >
           Sync AST
         </button>
       </div>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-zinc-500 mr-1">
-          Quick Tokens:
-        </span>
+      <div className="flex items-center gap-1 flex-wrap">
         {QUICK_TOKENS.map((token) => {
           const active = value.includes(token);
           return (
@@ -62,13 +61,13 @@ export function HarmonicsBar({ value, onChange, onCommit }: HarmonicsBarProps) {
               key={token}
               type="button"
               onClick={() => toggleToken(token)}
-              className={`px-2 py-0.5 rounded text-[11px] font-mono border transition ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition ${
                 active
                   ? 'bg-indigo-500/20 border-indigo-500/60 text-indigo-300'
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  : 'bg-[#141419] border-zinc-800/90 text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              {active ? `✓ ${token}` : `+ ${token}`}
+              {token}
             </button>
           );
         })}

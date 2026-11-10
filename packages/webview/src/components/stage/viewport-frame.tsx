@@ -15,17 +15,17 @@ export interface ViewportFrameProps {
 }
 
 const VIEWPORT_WIDTHS: Record<ViewportPreset, string> = {
-  responsive: 'w-full max-w-2xl',
+  responsive: 'w-full max-w-3xl',
   mobile: 'w-[375px]',
   tablet: 'w-[768px]',
   desktop: 'w-[1024px]',
 };
 
-const VIEWPORT_LABELS: Record<ViewportPreset, string> = {
-  responsive: 'Responsive (Fluid)',
-  mobile: 'Mobile • 375px',
-  tablet: 'Tablet • 768px',
-  desktop: 'Desktop • 1024px',
+const VIEWPORT_DIMENSIONS: Record<ViewportPreset, string> = {
+  responsive: 'Fluid',
+  mobile: '375px',
+  tablet: '768px',
+  desktop: '1024px',
 };
 
 export function ViewportFrame({
@@ -41,7 +41,9 @@ export function ViewportFrame({
   onSwitchTab,
 }: ViewportFrameProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [copiedToast, setCopiedToast] = useState<boolean>(false);
+  const [copiedToast, setCopiedToast] = useState<string | null>(null);
+  const [surfaceTone, setSurfaceTone] = useState<'dark' | 'light'>('dark');
+  const [showBounds, setShowBounds] = useState<boolean>(true);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -60,13 +62,29 @@ export function ViewportFrame({
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
+  const triggerToast = (msg: string) => {
+    setCopiedToast(msg);
+    setTimeout(() => setCopiedToast(null), 1600);
+  };
+
   const handleCopyClasses = async () => {
     try {
       await navigator.clipboard.writeText(computedClass);
-      setCopiedToast(true);
-      setTimeout(() => setCopiedToast(false), 1800);
+      triggerToast('Copied className');
     } catch {
-      // Fallback ignored
+      // ignore
+    }
+    setContextMenu(null);
+  };
+
+  const handleCopyJsx = async () => {
+    const tag = targetElement || 'button';
+    const jsx = `<${tag} className="${computedClass}">${previewLabel}</${tag}>`;
+    try {
+      await navigator.clipboard.writeText(jsx);
+      triggerToast('Copied JSX');
+    } catch {
+      // ignore
     }
     setContextMenu(null);
   };
@@ -76,9 +94,7 @@ export function ViewportFrame({
       ? propValues.label
       : typeof propValues.children === 'string' && propValues.children.trim().length > 0
       ? propValues.children
-      : componentName
-      ? `${componentName} Preview`
-      : 'Select a component';
+      : componentName || 'Button';
 
   const isDisabled = Boolean(propValues.disabled);
   const activeTag = targetElement || componentName || 'Component';
@@ -86,48 +102,77 @@ export function ViewportFrame({
   return (
     <div
       onContextMenu={handleContextMenu}
-      className="flex-1 flex flex-col items-center justify-center p-8 overflow-auto relative"
+      className={`flex-1 flex flex-col items-center justify-center p-6 overflow-auto relative transition-colors ${
+        surfaceTone === 'light' ? 'bg-zinc-100 text-zinc-900' : 'bg-[#09090b] text-zinc-100'
+      }`}
       style={
         showGrid
           ? {
               backgroundImage:
-                'radial-gradient(rgba(99, 102, 241, 0.16) 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
+                surfaceTone === 'light'
+                  ? 'radial-gradient(rgba(24, 24, 27, 0.12) 1px, transparent 1px)'
+                  : 'radial-gradient(rgba(161, 161, 170, 0.12) 1px, transparent 1px)',
+              backgroundSize: '16px 16px',
             }
           : undefined
       }
     >
-      <div
-        className={`transition-all duration-200 border border-zinc-800/90 rounded-xl bg-zinc-900/50 backdrop-blur-sm shadow-2xl flex flex-col overflow-hidden ${VIEWPORT_WIDTHS[viewport]}`}
-      >
-        {/* Viewport Chrome Header */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800/80 bg-zinc-900/90 text-[11px] text-zinc-400">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-rose-500/70"></span>
-            <span className="w-2 h-2 rounded-full bg-amber-500/70"></span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500/70"></span>
-            <span className="ml-2 font-mono text-zinc-300">{`<${activeTag} />`}</span>
-            {copiedToast && (
-              <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">
-                Copied classes!
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500">Right-click component for actions</span>
-            <span className="font-mono text-[10px] text-zinc-400">{VIEWPORT_LABELS[viewport]}</span>
-          </div>
+      {/* Floating Minimal Canvas HUD */}
+      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none text-[10px] font-mono">
+        <div className="flex items-center gap-1.5 pointer-events-auto bg-[#111116]/90 border border-zinc-800/80 rounded px-2 py-1 text-zinc-400">
+          <span className="text-indigo-400">{`<${activeTag} />`}</span>
+          <span className="text-zinc-600">•</span>
+          <span>{VIEWPORT_DIMENSIONS[viewport]}</span>
+          {copiedToast && (
+            <span className="ml-1.5 px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+              {copiedToast}
+            </span>
+          )}
         </div>
 
-        {/* Interactive Render Surface */}
+        <div className="flex items-center gap-1 pointer-events-auto bg-[#111116]/90 border border-zinc-800/80 rounded p-0.5 text-zinc-400">
+          <button
+            type="button"
+            onClick={() => setShowBounds((b) => !b)}
+            className={`px-2 py-0.5 rounded transition ${
+              showBounds ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            Guides
+          </button>
+          <button
+            type="button"
+            onClick={() => setSurfaceTone((t) => (t === 'dark' ? 'light' : 'dark'))}
+            className="px-2 py-0.5 rounded text-zinc-400 hover:text-zinc-200 transition"
+          >
+            {surfaceTone === 'dark' ? 'Dark' : 'Light'}
+          </button>
+        </div>
+      </div>
+
+      {/* Editor Frame Surface */}
+      <div
+        className={`transition-all duration-150 flex items-center justify-center min-h-[240px] p-12 rounded-lg border ${
+          surfaceTone === 'light'
+            ? 'border-zinc-300/80 bg-white/70'
+            : 'border-zinc-800/60 bg-[#0d0d11]/60'
+        } ${VIEWPORT_WIDTHS[viewport]}`}
+      >
+        {/* Inspector Bounding Box Wrapper */}
         <div
-          onContextMenu={handleContextMenu}
-          className="p-14 flex items-center justify-center min-h-[220px]"
+          className={`relative group ${
+            showBounds ? 'p-1 border border-dashed border-indigo-500/40 rounded' : ''
+          }`}
         >
+          {showBounds && (
+            <span className="absolute -top-4 left-0 text-[9px] font-mono text-indigo-400/80 select-none">
+              {activeTag}
+            </span>
+          )}
           <button
             disabled={isDisabled}
             onContextMenu={handleContextMenu}
-            title="Right-click to open Retune Component Menu"
+            title="Right-click for component actions"
             className={`transition-all ${computedClass} ${
               isDisabled ? 'opacity-50 cursor-not-allowed' : ''
             }`}
@@ -137,37 +182,47 @@ export function ViewportFrame({
         </div>
       </div>
 
-      {/* Component Right-Click Context Menu */}
+      {/* Minimal Editor Context Menu */}
       {contextMenu && (
         <div
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-50 w-60 rounded-lg border border-zinc-700/90 bg-zinc-900/95 backdrop-blur-md shadow-2xl py-1.5 text-xs text-zinc-200 select-none"
+          className="fixed z-50 w-52 rounded-md border border-zinc-800 bg-[#111116] shadow-2xl py-1 text-[11px] text-zinc-200 select-none"
         >
-          <div className="px-3 py-1 border-b border-zinc-800 text-[10px] font-mono uppercase tracking-wider text-indigo-400 flex items-center justify-between">
-            <span>{`<${activeTag} />`}</span>
-            <span className="text-zinc-500">Retune</span>
+          <div className="px-2.5 py-1 border-b border-zinc-800/80 text-[10px] font-mono text-zinc-400 flex items-center justify-between">
+            <span className="text-indigo-400">{`<${activeTag} />`}</span>
+            <span>Retune</span>
           </div>
 
           <button
             type="button"
             onClick={() => {
               onSyncAst?.();
+              triggerToast('Synced to AST');
               setContextMenu(null);
             }}
-            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
+            className="w-full px-2.5 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
           >
-            <span>Sync Classes to AST</span>
-            <span className="text-[10px] font-mono opacity-75">Enter</span>
+            <span>Sync Classes to Code</span>
+            <span className="text-[10px] font-mono opacity-70">↵</span>
           </button>
 
           <button
             type="button"
             onClick={handleCopyClasses}
-            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
+            className="w-full px-2.5 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
           >
-            <span>Copy Tailwind Classes</span>
-            <span className="text-[10px] font-mono opacity-75">Clipboard</span>
+            <span>Copy className</span>
+            <span className="text-[10px] font-mono opacity-70">CSS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCopyJsx}
+            className="w-full px-2.5 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
+          >
+            <span>Copy JSX Element</span>
+            <span className="text-[10px] font-mono opacity-70">TSX</span>
           </button>
 
           <button
@@ -176,18 +231,14 @@ export function ViewportFrame({
               onResetVariants?.();
               setContextMenu(null);
             }}
-            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
+            className="w-full px-2.5 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
           >
-            <span>Reset CVA Variants</span>
-            <span className="text-[10px] font-mono opacity-75">Default</span>
+            <span>Reset Variants</span>
           </button>
 
-          <div className="my-1 border-t border-zinc-800" />
+          <div className="my-1 border-t border-zinc-800/80" />
 
-          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-500">
-            Viewport Preset
-          </div>
-          <div className="grid grid-cols-2 gap-1 px-2 pb-1">
+          <div className="grid grid-cols-4 gap-0.5 px-1.5 py-0.5">
             {(['responsive', 'mobile', 'tablet', 'desktop'] as ViewportPreset[]).map((vp) => (
               <button
                 key={vp}
@@ -196,18 +247,18 @@ export function ViewportFrame({
                   onSelectViewport?.(vp);
                   setContextMenu(null);
                 }}
-                className={`px-2 py-1 rounded text-[11px] capitalize text-left transition ${
+                className={`py-1 rounded text-[10px] font-mono text-center transition ${
                   viewport === vp
                     ? 'bg-indigo-600 text-white'
-                    : 'text-zinc-300 hover:bg-zinc-800'
+                    : 'text-zinc-400 hover:bg-zinc-800'
                 }`}
               >
-                {vp}
+                {VIEWPORT_DIMENSIONS[vp]}
               </button>
             ))}
           </div>
 
-          <div className="my-1 border-t border-zinc-800" />
+          <div className="my-1 border-t border-zinc-800/80" />
 
           <button
             type="button"
@@ -215,22 +266,9 @@ export function ViewportFrame({
               onSwitchTab?.('ast');
               setContextMenu(null);
             }}
-            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
+            className="w-full px-2.5 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
           >
-            <span>Inspect Component AST & Props</span>
-            <span className="text-[10px] font-mono opacity-75">Tab</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onSwitchTab?.('api');
-              setContextMenu(null);
-            }}
-            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600 hover:text-white flex items-center justify-between transition"
-          >
-            <span>Open Scalar API Console</span>
-            <span className="text-[10px] font-mono opacity-75">OpenAPI</span>
+            <span>Inspect AST & Code</span>
           </button>
         </div>
       )}

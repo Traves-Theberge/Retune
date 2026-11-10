@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Safelist interactive component tuning tokens so live class manipulation works 100% offline in VS Code Webviews */
+@source inline("{px-0,px-1,px-2,px-2.5,px-3,px-4,px-5,px-6,px-8,px-10}");
+@source inline("{py-0,py-0.5,py-1,py-1.5,py-2,py-2.5,py-3,py-4,py-5}");
+@source inline("{gap-0,gap-1,gap-1.5,gap-2,gap-3,gap-4}");
+@source inline("{h-6,h-7,h-8,h-9,h-10,h-11,h-12}");
+@source inline("{text-xs,text-sm,text-base,text-lg,text-xl}");
+@source inline("{font-normal,font-medium,font-semibold,font-bold}");
+@source inline("{rounded-none,rounded-sm,rounded,rounded-md,rounded-lg,rounded-xl,rounded-2xl,rounded-full}");
+@source inline("{shadow-none,shadow-xs,shadow-sm,shadow,shadow-md,shadow-lg,shadow-xl,shadow-2xl}");
+@source inline("{bg-transparent,bg-zinc-900,bg-zinc-800,bg-zinc-700,bg-zinc-100,bg-white,bg-indigo-600,bg-indigo-500,bg-rose-600,bg-rose-500,bg-emerald-600,bg-emerald-500,bg-amber-500,bg-sky-600,bg-violet-600}");
+@source inline("{hover:bg-indigo-500,hover:bg-rose-500,hover:bg-zinc-800,hover:bg-zinc-700,hover:bg-emerald-500,hover:bg-sky-500,hover:bg-violet-500}");
+@source inline("{text-white,text-zinc-900,text-zinc-100,text-zinc-200,text-zinc-300,text-zinc-400,text-indigo-300,text-emerald-300,text-rose-300}");
+@source inline("{border,border-0,border-2,border-zinc-700,border-zinc-600,border-indigo-500,border-rose-500,border-emerald-500}");
+@source inline("{ring-0,ring-1,ring-2,ring-indigo-500,ring-zinc-500,ring-emerald-500,ring-rose-500}");
+@source inline("{scale-95,scale-100,scale-105,opacity-50,opacity-75,opacity-100}");
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #09090b;
+  color: #e4e4e7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Minimal custom scrollbars for editor feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 113, 122, 0.5);
+}
+

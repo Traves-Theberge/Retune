@@ -301,12 +301,12 @@ export function App() {
   return (
     <div
       className={`flex h-screen overflow-hidden ${
-        isDark ? 'dark bg-zinc-950 text-zinc-100' : 'bg-white text-zinc-900'
+        isDark ? 'dark bg-[#09090b] text-zinc-100' : 'bg-white text-zinc-900'
       }`}
     >
-      {/* In standalone preview mode, optionally dock the VS Code Activity Bar Sidebar on the left */}
+      {/* Dockable Inspector Sidebar (default on in standalone browser, toggleable in Editor Tab) */}
       {showSidebarSplit && (
-        <aside className="w-80 border-r border-zinc-800 shrink-0 h-full overflow-hidden">
+        <aside className="w-72 shrink-0 h-full overflow-hidden">
           <SidebarView
             meta={meta}
             stageState={stageState}
@@ -324,40 +324,37 @@ export function App() {
 
       {/* Main Editor Tab Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* VS Code Editor Tab Strip & Stage Controls */}
-        <header className="flex items-center justify-between px-4 border-b border-zinc-800 bg-zinc-900/80 select-none">
-          {/* Left: Brand + Editor Tabs */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 py-2.5">
-              {isStandaloneBrowser && (
-                <button
-                  type="button"
-                  onClick={() => setShowSidebarSplit((s) => !s)}
-                  title="Toggle VS Code Sidebar Drawer"
-                  className={`px-2 py-0.5 rounded text-[11px] border mr-1 transition ${
-                    showSidebarSplit
-                      ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  Sidebar
-                </button>
-              )}
-              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-              <span className="font-bold tracking-tight text-indigo-400 text-xs">RETUNE</span>
-              <span className="text-xs text-zinc-700">/</span>
-              <span className="text-xs font-mono text-zinc-300">
-                {meta?.componentName ? `${meta.componentName}.tsx` : 'No Component Active'}
+        {/* Minimal 36px Editor Header Bar */}
+        <header className="h-9 flex items-center justify-between px-3 border-b border-zinc-800/80 bg-[#0e0e12] text-[11px] select-none shrink-0">
+          {/* Left: Inspector Toggle + File Breadcrumb + Editor Tabs */}
+          <div className="flex items-center gap-3 h-full">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSidebarSplit((s) => !s)}
+                title="Toggle Docked Inspector Panel"
+                className={`px-2 py-0.5 rounded text-[10px] font-mono border transition ${
+                  showSidebarSplit
+                    ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-300'
+                    : 'bg-[#141419] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Inspector
+              </button>
+              <span className="font-mono text-zinc-300 font-medium">
+                {meta?.componentName ? `${meta.componentName}.tsx` : 'Stage'}
               </span>
             </div>
 
-            {/* Editor Tab System */}
-            <nav className="flex items-center gap-1 pt-1">
+            <div className="h-3.5 w-[1px] bg-zinc-800" />
+
+            {/* Flush Editor Tabs */}
+            <nav className="flex items-center gap-0.5 h-full">
               {(
                 [
-                  { id: 'stage', label: 'The Stage' },
-                  { id: 'ast', label: 'AST & Props' },
-                  { id: 'api', label: 'Scalar API' },
+                  { id: 'stage', label: 'Stage' },
+                  { id: 'ast', label: 'Code & AST' },
+                  { id: 'api', label: 'API' },
                 ] as const
               ).map((tab) => {
                 const isActive = stageState.activeTab === tab.id;
@@ -366,10 +363,10 @@ export function App() {
                     key={tab.id}
                     type="button"
                     onClick={() => updateStageState({ activeTab: tab.id })}
-                    className={`px-3.5 py-2 text-xs font-medium border-b-2 transition ${
+                    className={`px-2.5 h-full flex items-center text-[11px] font-medium border-b-2 transition ${
                       isActive
-                        ? 'border-indigo-500 text-white bg-zinc-950/60 rounded-t-md'
-                        : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-md'
+                        ? 'border-indigo-500 text-zinc-100 bg-zinc-900/40'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
                     {tab.label}
@@ -379,42 +376,53 @@ export function App() {
             </nav>
           </div>
 
-          {/* Right: Viewport Presets & Grid Toggle */}
-          <div className="flex items-center gap-2 py-1.5">
+          {/* Right: Compact Viewport Controls & Sync */}
+          <div className="flex items-center gap-1.5">
             {stageState.activeTab === 'stage' && (
               <>
-                <div className="flex items-center bg-zinc-900 border border-zinc-800 p-0.5 rounded-md text-[11px]">
-                  {(['responsive', 'mobile', 'tablet', 'desktop'] as ViewportPreset[]).map((vp) => (
+                <div className="flex items-center bg-[#141419] border border-zinc-800/90 p-0.5 rounded text-[10px] font-mono">
+                  {(
+                    [
+                      { id: 'responsive', label: 'Fluid' },
+                      { id: 'mobile', label: '375' },
+                      { id: 'tablet', label: '768' },
+                      { id: 'desktop', label: '1024' },
+                    ] as const
+                  ).map((vp) => (
                     <button
-                      key={vp}
+                      key={vp.id}
                       type="button"
-                      onClick={() => updateStageState({ viewport: vp })}
-                      className={`px-2 py-0.5 rounded capitalize transition ${
-                        stageState.viewport === vp
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                      onClick={() => updateStageState({ viewport: vp.id })}
+                      className={`px-1.5 py-0.5 rounded-[3px] transition ${
+                        stageState.viewport === vp.id
+                          ? 'bg-zinc-800 text-zinc-100 font-medium'
+                          : 'text-zinc-500 hover:text-zinc-300'
                       }`}
                     >
-                      {vp}
+                      {vp.label}
                     </button>
                   ))}
                 </div>
                 <button
                   type="button"
                   onClick={() => updateStageState({ showGrid: !stageState.showGrid })}
-                  className={`px-2.5 py-1 rounded text-[11px] border transition ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono border transition ${
                     stageState.showGrid
-                      ? 'bg-indigo-500/15 border-indigo-500/50 text-indigo-300'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                      ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                      : 'bg-[#141419] border-zinc-800 text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   Grid
                 </button>
               </>
             )}
-            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
-              :{config.daemonPort}
-            </span>
+            <button
+              type="button"
+              onClick={() => handleUpdateHarmonics(stageState.harmonicsClass, true)}
+              className="px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition"
+            >
+              Sync Code
+            </button>
           </div>
         </header>
 
@@ -455,22 +463,22 @@ export function App() {
           )}
 
           {stageState.activeTab === 'ast' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 h-full divide-y md:divide-y-0 md:divide-x divide-zinc-800 overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-2 h-full divide-y md:divide-y-0 md:divide-x divide-zinc-800/80 overflow-hidden bg-[#09090b]">
               {/* Extracted AST Metadata */}
               <div className="p-4 overflow-y-auto space-y-4">
                 <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-2">
-                    Extracted CVA Metadata
+                  <h3 className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    CVA Variant AST
                   </h3>
-                  <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-200 overflow-x-auto">
+                  <pre className="p-3 rounded bg-[#111116] border border-zinc-800/80 text-[11px] font-mono text-zinc-200 overflow-x-auto">
                     {JSON.stringify(meta?.cva || { hasCva: false }, null, 2)}
                   </pre>
                 </div>
                 <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-2">
-                    Extracted TypeScript Props
+                  <h3 className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    TypeScript Props Interface
                   </h3>
-                  <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-200 overflow-x-auto">
+                  <pre className="p-3 rounded bg-[#111116] border border-zinc-800/80 text-[11px] font-mono text-zinc-200 overflow-x-auto">
                     {JSON.stringify(meta?.props || [], null, 2)}
                   </pre>
                 </div>
@@ -478,10 +486,10 @@ export function App() {
 
               {/* Live TSX Source */}
               <div className="p-4 overflow-y-auto flex flex-col">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                  Live TSX Source ({meta?.filePath || 'No File'})
+                <h3 className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                  Source • {meta?.filePath || 'Active Component'}
                 </h3>
-                <pre className="flex-1 p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-xs font-mono text-zinc-300 overflow-auto">
+                <pre className="flex-1 p-3 rounded bg-[#111116] border border-zinc-800/80 text-[11px] font-mono text-zinc-300 overflow-auto leading-relaxed">
                   {meta?.rawSource || '// Focus a .tsx file in VS Code to inspect its AST'}
                 </pre>
               </div>

@@ -324,21 +324,9 @@ export function App() {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Minimal 36px Editor Header Bar */}
         <header className="h-9 flex items-center justify-between px-3 border-b border-zinc-800/80 bg-[#0e0e12] text-[11px] select-none shrink-0">
-          {/* Left: Inspector Toggle + File Breadcrumb + Editor Tabs */}
+          {/* Left: File Breadcrumb */}
           <div className="flex items-center gap-3 h-full">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowSidebarSplit((s) => !s)}
-                title="Toggle Docked Inspector Panel"
-                className={`px-2 py-0.5 rounded text-[10px] font-mono border transition ${
-                  showSidebarSplit
-                    ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-300'
-                    : 'bg-[#141419] border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Inspector
-              </button>
               <span className="font-mono text-zinc-300 font-medium">
                 {meta?.componentName ? `${meta.componentName}.tsx` : 'Stage'}
               </span>

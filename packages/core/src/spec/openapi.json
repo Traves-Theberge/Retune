@@ -1,0 +1,137 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Retune Engine API",
+    "version": "1.0.0",
+    "description": "Ephemeral AST inspection and non-lossy JSX mutation endpoints for Retune."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:49221",
+      "description": "Local Retune Daemon"
+    }
+  ],
+  "paths": {
+    "/v1/openapi.json": {
+      "get": {
+        "summary": "Retrieve OpenAPI Specification",
+        "operationId": "getOpenApiSpec",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON specification"
+          }
+        }
+      }
+    },
+    "/v1/components/inspect": {
+      "post": {
+        "summary": "Inspect Component CVA Metadata",
+        "operationId": "inspectComponent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fileContent"],
+                "properties": {
+                  "fileContent": {
+                    "type": "string",
+                    "description": "Raw TSX source code to inspect"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Extracted CVA metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cva": {
+                      "type": "object",
+                      "properties": {
+                        "hasCva": { "type": "boolean" },
+                        "cvaIdentifier": { "type": "string" },
+                        "baseClasses": { "type": "string" },
+                        "variants": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                          }
+                        },
+                        "defaultVariants": {
+                          "type": "object",
+                          "additionalProperties": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "AST Parse Error"
+          }
+        }
+      }
+    },
+    "/v1/components/mutate": {
+      "post": {
+        "summary": "Mutate Component Tailwind Classes",
+        "operationId": "mutateComponent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fileContent", "componentName", "className"],
+                "properties": {
+                  "fileContent": {
+                    "type": "string",
+                    "description": "Raw TSX source code"
+                  },
+                  "componentName": {
+                    "type": "string",
+                    "description": "Target JSX component or element name"
+                  },
+                  "className": {
+                    "type": "string",
+                    "description": "Updated Tailwind utility classes"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutated source code preserving formatting and comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "updatedContent": { "type": "string" },
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Mutation Error"
+          }
+        }
+      }
+    }
+  }
+}
+

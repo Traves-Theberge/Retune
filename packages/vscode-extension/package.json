@@ -1,0 +1,206 @@
+{
+  "name": "retune-vscode",
+  "displayName": "Retune — Visual Component Stage & Scalar API Console",
+  "description": "Zero-config visual component tuner, CVA variant inspector, and Scalar-powered API console for VS Code.",
+  "version": "1.0.0",
+  "publisher": "retune",
+  "categories": [
+    "Visualization",
+    "Programming Languages",
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "react",
+    "tailwind",
+    "shadcn",
+    "cva",
+    "scalar",
+    "openapi",
+    "ast",
+    "component-tuner"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Local AST inspection is available; Vite sandbox execution requires workspace trust."
+    }
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:typescriptreact",
+    "onLanguage:javascriptreact",
+    "onView:retune.sidebarView",
+    "onCommand:retune.openStage",
+    "onCommand:retune.openStageTab",
+    "onCommand:retune.openStageSplit",
+    "onCommand:retune.openScalarApi"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "retune-sidebar",
+          "title": "Retune",
+          "icon": "resources/retune-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "retune-sidebar": [
+        {
+          "type": "webview",
+          "id": "retune.sidebarView",
+          "name": "Params & Configuration",
+          "icon": "resources/retune-icon.svg",
+          "contextualTitle": "Retune Inspector"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "retune.openStage",
+        "title": "Retune: Open Visual Stage",
+        "category": "Retune",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "retune.openStageTab",
+        "title": "Retune: Open Visual Stage in Editor Tab",
+        "category": "Retune",
+        "icon": "$( preview )"
+      },
+      {
+        "command": "retune.openStageSplit",
+        "title": "Retune: Open Visual Stage in Split Editor",
+        "category": "Retune",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "retune.openScalarApi",
+        "title": "Retune: Open Scalar API Console Tab",
+        "category": "Retune",
+        "icon": "$(globe)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "retune.openStage",
+          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "group": "navigation@1"
+        },
+        {
+          "command": "retune.openStageTab",
+          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "retune.openStage",
+          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "group": "navigation@1"
+        },
+        {
+          "command": "retune.openScalarApi",
+          "when": "editorLangId == typescriptreact || editorLangId == javascriptreact",
+          "group": "navigation@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "retune.openStage",
+          "when": "view == retune.sidebarView",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "retune.openStage",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorTextFocus && (editorLangId == typescriptreact || editorLangId == javascriptreact)"
+      }
+    ],
+    "configuration": {
+      "title": "Retune",
+      "properties": {
+        "retune.daemon.port": {
+          "type": "number",
+          "default": 49221,
+          "description": "Port for the local Retune AST & OpenAPI HTTP daemon."
+        },
+        "retune.sandbox.port": {
+          "type": "number",
+          "default": 5173,
+          "description": "Port for the local Webview Vite dev server."
+        },
+        "retune.stage.openMode": {
+          "type": "string",
+          "enum": [
+            "split",
+            "tab"
+          ],
+          "enumDescriptions": [
+            "Open Retune Stage in a split editor group beside the active code editor.",
+            "Open Retune Stage as a full tab in the active editor group."
+          ],
+          "default": "split",
+          "description": "Controls how the Retune Visual Stage opens in the VS Code Editor Tab system."
+        },
+        "retune.stage.defaultViewport": {
+          "type": "string",
+          "enum": [
+            "responsive",
+            "mobile",
+            "tablet",
+            "desktop"
+          ],
+          "default": "responsive",
+          "description": "Default viewport frame dimension preset in The Stage."
+        },
+        "retune.stage.showGrid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display a dot alignment grid on The Stage canvas."
+        },
+        "retune.autoSyncActiveEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sync the Stage Tab and Sidebar Params when switching between .tsx files."
+        },
+        "retune.scalar.layout": {
+          "type": "string",
+          "enum": [
+            "modern",
+            "classic"
+          ],
+          "default": "modern",
+          "description": "Layout theme for the embedded Scalar API Reference console."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run --passWithNoTests",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@retune/core": "workspace:*",
+    "@retune/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.145.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

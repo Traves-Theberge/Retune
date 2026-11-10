@@ -413,9 +413,21 @@ export function App() {
                 componentName={meta?.componentName}
                 targetElement={stageState.targetElement}
                 computedClass={computedPreviewClass}
+                classes={stageState.harmonicsClass}
+                onChangeClasses={(next) => handleUpdateHarmonics(next, false)}
+                label={String(stageState.propValues.label ?? '')}
+                onChangeLabel={(next) => handleUpdateProp('label', next)}
+                cva={meta?.cva}
+                selectedVariants={stageState.selectedVariants}
+                onSelectVariant={handleSelectVariant}
+                onCommitVariant={handleCommitVariant}
+                disabled={Boolean(stageState.propValues.disabled)}
+                onToggleDisabled={() =>
+                  handleUpdateProp('disabled', !Boolean(stageState.propValues.disabled))
+                }
+                onOpenInspector={() => setShowSidebarSplit(true)}
                 viewport={stageState.viewport}
                 showGrid={stageState.showGrid}
-                propValues={stageState.propValues}
                 onSyncAst={() => handleUpdateHarmonics(stageState.harmonicsClass, true)}
                 onResetVariants={() =>
                   updateStageState({

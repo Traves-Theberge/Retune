@@ -3,6 +3,7 @@ dist/
 webview-dist/
 .turbo/
 *.vsix
+.vsix-staging/
 *.log
 .DS_Store
 coverage/

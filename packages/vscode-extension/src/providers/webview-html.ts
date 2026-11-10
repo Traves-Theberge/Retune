@@ -19,13 +19,21 @@ export function buildWebviewHtml(
   const distDir = getWebviewDistDir(extensionUri);
   const assetsDir = path.join(distDir, 'assets');
 
+  let baseTag = '';
   let scriptTag = `<script type="module" src="http://localhost:${sandboxPort}/src/main.tsx"></script>`;
   let styleTag = '';
 
   if (fs.existsSync(assetsDir)) {
+    const distUri = webview.asWebviewUri(vscode.Uri.file(distDir));
+    baseTag = `<base href="${distUri}/" />`;
+
     const files = fs.readdirSync(assetsDir);
-    const jsFile = files.find((f) => f.startsWith('index-') && f.endsWith('.js')) || files.find((f) => f.endsWith('.js'));
-    const cssFile = files.find((f) => f.startsWith('index-') && f.endsWith('.css')) || files.find((f) => f.endsWith('.css'));
+    const jsFile =
+      files.find((f) => f.startsWith('index-') && f.endsWith('.js')) ||
+      files.find((f) => f.endsWith('.js'));
+    const cssFile =
+      files.find((f) => f.startsWith('index-') && f.endsWith('.css')) ||
+      files.find((f) => f.endsWith('.css'));
 
     if (jsFile) {
       const jsUri = webview.asWebviewUri(vscode.Uri.file(path.join(assetsDir, jsFile)));
@@ -42,6 +50,7 @@ export function buildWebviewHtml(
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      ${baseTag}
       <title>Retune</title>
       <script src="https://cdn.tailwindcss.com"></script>
       ${styleTag}

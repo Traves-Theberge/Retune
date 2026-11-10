@@ -41,9 +41,12 @@ export function registerStageCommands(context: vscode.ExtensionContext): vscode.
 
   const tuneComponentAtCursor = vscode.commands.registerCommand(
     'retune.tuneComponentAtCursor',
-    async (uri?: vscode.Uri) => {
+    async (uri?: vscode.Uri, explicitSymbol?: string) => {
       const doc = await resolveTargetDocument(uri);
-      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      const targetElement =
+        typeof explicitSymbol === 'string' && explicitSymbol
+          ? explicitSymbol
+          : extractSymbolAtCursor(vscode.window.activeTextEditor);
       StagePanel.render(context.extensionUri, doc, {
         tab: 'stage',
         targetElement,
@@ -53,9 +56,12 @@ export function registerStageCommands(context: vscode.ExtensionContext): vscode.
 
   const openStageTab = vscode.commands.registerCommand(
     'retune.openStageTab',
-    async (uri?: vscode.Uri) => {
+    async (uri?: vscode.Uri, explicitSymbol?: string) => {
       const doc = await resolveTargetDocument(uri);
-      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      const targetElement =
+        typeof explicitSymbol === 'string' && explicitSymbol
+          ? explicitSymbol
+          : extractSymbolAtCursor(vscode.window.activeTextEditor);
       StagePanel.render(context.extensionUri, doc, {
         openMode: 'tab',
         tab: 'stage',
@@ -66,9 +72,12 @@ export function registerStageCommands(context: vscode.ExtensionContext): vscode.
 
   const openStageSplit = vscode.commands.registerCommand(
     'retune.openStageSplit',
-    async (uri?: vscode.Uri) => {
+    async (uri?: vscode.Uri, explicitSymbol?: string) => {
       const doc = await resolveTargetDocument(uri);
-      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      const targetElement =
+        typeof explicitSymbol === 'string' && explicitSymbol
+          ? explicitSymbol
+          : extractSymbolAtCursor(vscode.window.activeTextEditor);
       StagePanel.render(context.extensionUri, doc, {
         openMode: 'split',
         tab: 'stage',
@@ -79,9 +88,12 @@ export function registerStageCommands(context: vscode.ExtensionContext): vscode.
 
   const inspectAstTab = vscode.commands.registerCommand(
     'retune.inspectAstTab',
-    async (uri?: vscode.Uri) => {
+    async (uri?: vscode.Uri, explicitSymbol?: string) => {
       const doc = await resolveTargetDocument(uri);
-      const targetElement = extractSymbolAtCursor(vscode.window.activeTextEditor);
+      const targetElement =
+        typeof explicitSymbol === 'string' && explicitSymbol
+          ? explicitSymbol
+          : extractSymbolAtCursor(vscode.window.activeTextEditor);
       StagePanel.render(context.extensionUri, doc, {
         tab: 'ast',
         targetElement,

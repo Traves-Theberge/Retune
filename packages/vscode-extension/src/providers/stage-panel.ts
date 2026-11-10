@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
   extractCvaMetadata,
+  extractElementClassName,
   analyzeProps,
   mutateClassName,
   mutateDefaultVariant,
@@ -76,16 +77,28 @@ export class StagePanel {
     }
 
     if (options?.tab || options?.targetElement) {
+      const docText = StagePanel._activeDocument?.getText() || '';
+      const elementClasses = options.targetElement
+        ? extractElementClassName(docText, options.targetElement)
+        : '';
       StagePanel._stageState = {
         ...StagePanel._stageState,
         ...(options.tab ? { activeTab: options.tab } : {}),
         ...(options.targetElement ? { targetElement: options.targetElement } : {}),
+        ...(elementClasses ? { harmonicsClass: elementClasses } : {}),
       };
     }
+
+    // Reveal the Retune Activity Bar Sidebar alongside the Stage Tab in the application
+    vscode.commands.executeCommand('workbench.view.extension.retune-sidebar').then(
+      () => {},
+      () => {}
+    );
 
     if (StagePanel.currentPanel) {
       StagePanel.currentPanel._panel.reveal(viewColumn);
       StagePanel.currentPanel.syncAll();
+      StagePanel._notifyListeners();
       return;
     }
 
@@ -118,10 +131,12 @@ export class StagePanel {
 
     if (meta && isNewDoc) {
       const cfg = getRetuneConfig();
+      const fallbackElementClass =
+        meta.cva.baseClasses || extractElementClassName(document.getText());
       StagePanel._stageState = {
         ...StagePanel._stageState,
         selectedVariants: { ...meta.cva.defaultVariants },
-        harmonicsClass: meta.cva.baseClasses || '',
+        harmonicsClass: fallbackElementClass || '',
         viewport: cfg.defaultViewport,
         showGrid: cfg.showGrid,
       };

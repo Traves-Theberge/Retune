@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractCvaMetadata } from '../ast/cva-extractor';
-import { mutateClassName } from '../ast/jsx-mutator';
+import { extractElementClassName, mutateClassName } from '../ast/jsx-mutator';
 import { analyzeProps } from '../ast/prop-analyzer';
 
 const sampleButtonSource = `import * as React from "react"
@@ -77,6 +77,11 @@ describe('@retune/core AST Engine', () => {
       { name: 'label', type: 'string', optional: false },
       { name: 'disabled', type: 'boolean', optional: true },
     ]);
+  });
+
+  it('extracts element className for any JSX component or tag', () => {
+    const cls = extractElementClassName(sampleButtonSource, 'button');
+    expect(cls).toBe('px-4 py-2 bg-indigo-600 text-white');
   });
 });
 

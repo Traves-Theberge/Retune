@@ -2,6 +2,44 @@ import { parse, print, types } from 'recast';
 import { parse as babelParse } from '@babel/parser';
 import * as t from '@babel/types';
 
+export function extractElementClassName(
+  sourceCode: string,
+  targetComponent?: string
+): string {
+  try {
+    const ast = babelParse(sourceCode, {
+      sourceType: 'module',
+      plugins: ['typescript', 'jsx'],
+    });
+
+    let foundClass = '';
+    types.visit(ast, {
+      visitJSXOpeningElement(path: any) {
+        const node = path.node;
+        const nameMatch =
+          t.isJSXIdentifier(node.name) &&
+          (!targetComponent ||
+            node.name.name === targetComponent ||
+            node.name.name.toLowerCase() === targetComponent.toLowerCase());
+
+        if (nameMatch && !foundClass) {
+          const classAttr = node.attributes.find(
+            (attr: any) => t.isJSXAttribute(attr) && attr.name.name === 'className'
+          );
+          if (classAttr && t.isStringLiteral(classAttr.value)) {
+            foundClass = classAttr.value.value;
+          }
+        }
+        this.traverse(path);
+      },
+    });
+
+    return foundClass;
+  } catch {
+    return '';
+  }
+}
+
 export function mutateClassName(
   sourceCode: string,
   targetComponent: string,
@@ -20,16 +58,20 @@ export function mutateClassName(
   });
 
   let mutated = false;
+  let firstOpeningNode: any = null;
 
   // Walk using Recast AST types
   types.visit(ast, {
     visitJSXOpeningElement(path: any) {
       const node = path.node;
+      if (!firstOpeningNode && t.isJSXIdentifier(node.name)) {
+        firstOpeningNode = node;
+      }
+
       const isTarget =
         t.isJSXIdentifier(node.name) &&
         (node.name.name === targetComponent ||
-          node.name.name === 'button' ||
-          node.name.name === 'div');
+          node.name.name.toLowerCase() === targetComponent.toLowerCase());
 
       if (isTarget && !mutated) {
         const classAttr = node.attributes.find(
@@ -48,6 +90,19 @@ export function mutateClassName(
       this.traverse(path);
     },
   });
+
+  if (!mutated && firstOpeningNode) {
+    const classAttr = firstOpeningNode.attributes.find(
+      (attr: any) => t.isJSXAttribute(attr) && attr.name.name === 'className'
+    );
+    if (classAttr) {
+      classAttr.value = t.stringLiteral(newClassName);
+    } else {
+      firstOpeningNode.attributes.push(
+        t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(newClassName))
+      );
+    }
+  }
 
   return print(ast).code;
 }

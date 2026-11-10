@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ViewportPreset, StageTabId } from '@retune/core';
+import { parseArbitraryStyle } from '../../lib/arbitrary-style';
 
 export interface ViewportFrameProps {
   componentName?: string;
@@ -173,6 +174,7 @@ export function ViewportFrame({
             disabled={isDisabled}
             onContextMenu={handleContextMenu}
             title="Right-click for component actions"
+            style={parseArbitraryStyle(computedClass)}
             className={`transition-all ${computedClass} ${
               isDisabled ? 'opacity-50 cursor-not-allowed' : ''
             }`}

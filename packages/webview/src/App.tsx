@@ -11,9 +11,7 @@ import {
   StageOpenMode,
   StageTabId,
 } from '@retune/core';
-import { ToneSelector } from './components/stage/tone-selector';
 import { ViewportFrame } from './components/stage/viewport-frame';
-import { HarmonicsBar } from './components/stage/harmonics-bar';
 import { SidebarView } from './components/sidebar/sidebar-view';
 
 declare global {
@@ -346,34 +344,15 @@ export function App() {
               </span>
             </div>
 
-            <div className="h-3.5 w-[1px] bg-zinc-800" />
-
-            {/* Flush Editor Tabs */}
-            <nav className="flex items-center gap-0.5 h-full">
-              {(
-                [
-                  { id: 'stage', label: 'Stage' },
-                  { id: 'ast', label: 'Code & AST' },
-                  { id: 'api', label: 'API' },
-                ] as const
-              ).map((tab) => {
-                const isActive = stageState.activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => updateStageState({ activeTab: tab.id })}
-                    className={`px-2.5 h-full flex items-center text-[11px] font-medium border-b-2 transition ${
-                      isActive
-                        ? 'border-indigo-500 text-zinc-100 bg-zinc-900/40'
-                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
+            {stageState.activeTab !== 'stage' && (
+              <button
+                type="button"
+                onClick={() => updateStageState({ activeTab: 'stage' })}
+                className="px-2 py-0.5 rounded text-[10px] font-mono border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition"
+              >
+                ← Stage
+              </button>
+            )}
           </div>
 
           {/* Right: Compact Viewport Controls & Sync */}
@@ -430,13 +409,6 @@ export function App() {
         <main className="flex-1 overflow-hidden relative">
           {stageState.activeTab === 'stage' && (
             <div className="flex flex-col h-full">
-              <ToneSelector
-                cva={meta?.cva}
-                selectedVariants={stageState.selectedVariants}
-                onSelectVariant={handleSelectVariant}
-                onCommitVariant={handleCommitVariant}
-              />
-
               <ViewportFrame
                 componentName={meta?.componentName}
                 targetElement={stageState.targetElement}
@@ -452,12 +424,6 @@ export function App() {
                 }
                 onSelectViewport={(vp) => updateStageState({ viewport: vp })}
                 onSwitchTab={(tab) => updateStageState({ activeTab: tab })}
-              />
-
-              <HarmonicsBar
-                value={stageState.harmonicsClass}
-                onChange={(val) => handleUpdateHarmonics(val, false)}
-                onCommit={(val) => handleUpdateHarmonics(val, true)}
               />
             </div>
           )}

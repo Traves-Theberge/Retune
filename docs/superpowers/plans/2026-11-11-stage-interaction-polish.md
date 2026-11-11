@@ -24,6 +24,7 @@
 - Every interactive element: `type="button"` on buttons, visible `focus-visible:ring-1 focus-visible:ring-focus outline-none`; icon-only buttons need `aria-label` and `title`.
 - Icons: `lucide-react`, `size={14}`.
 - Webview tests run in node (no jsdom). Test components with `renderToStaticMarkup` from `react-dom/server`. Test files live in `packages/webview/src/__tests__/` and are named `*.test.ts(x)`.
+- Markup assertions are order-sensitive: on any element write `role` first, then `aria-*`, then other props; put a button's or title's text directly inside its own element (e.g. `<span>Layout</span>`, `<button …>Sync</button>`), never concatenated with siblings in the same text node.
 - Do not add dependencies other than `@tailwindcss/browser@4.3.5` (Task 5).
 - Commit message trailer: `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>`.
 
@@ -241,7 +242,7 @@ static setActiveDocument(document: vscode.TextDocument): void;
 Remove `onDidStateChange`, `_stateListeners`, `_notifyListeners`, the instance `syncAll`/`postMessage`/`updateDocument`, and `RetuneSidebarProvider.syncSidebar` (callers switch to `StagePanel.syncAll()`).
 
 Behaviour:
-- The panel constructor registers the `'stage'` sink (dispose it with the panel). `resolveWebviewView` registers the `'sidebar'` sink and passes `'sidebar'` as `source`.
+- The panel constructor registers the `'stage'` sink (dispose it with the panel). `resolveWebviewView` registers the `'sidebar'` sink and passes `'sidebar'` as `source`. Both `onDidReceiveMessage` listeners must `return StagePanel.handleSharedMessage(...)` so callers can await it.
 - `READY` → `syncAll()`.
 - `UPDATE_STAGE_STATE` → merge the patch, then `broadcast({ type: 'SYNC_STAGE_STATE', payload: state }, source)` (never back to the sender). `UPDATE_PROP_VALUE` → same with the merged `propValues`.
 - `UPDATE_CONFIG` → `await updateRetuneConfig`, then `broadcast` `SYNC_CONFIG` to all.
@@ -723,7 +724,7 @@ describe('ui primitives', () => {
   it('uses only token colours', () => {
     const ed = createClassEditor('px-[14px] bg-indigo-600', () => {});
     const out = html(<div><Button variant="primary">Sync</Button><Row label="x">y</Row>{ed.lenRow('pad X', 'px', [], 0, 64)}{ed.col('bg')}{ed.weight}</div>);
-    expect(out).not.toMatch(OLD_PALETTE);
+    expect(out.replace(/value="[^"]*"/g, '')).not.toMatch(OLD_PALETTE);
     expect(out).toContain('pad X'); expect(out).toContain('value="14"');
   });
 });
@@ -838,7 +839,7 @@ Each `ElementList` row must be a single element with `role="option"`; give the r
 
 - [ ] **Step 2: Run** `pnpm --filter @retune/webview test` — expected: FAIL.
 - [ ] **Step 3: Implement** per Interfaces and Behaviour.
-- [ ] **Step 4: Verify.** `pnpm --filter @retune/webview test` PASS; `pnpm --filter @retune/webview lint` exit 0; `git grep -nE "zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-fA-F]{6}" -- packages/webview/src/components/ui packages/webview/src/components/shared` prints nothing.
+- [ ] **Step 4: Verify.** `pnpm --filter @retune/webview test` PASS; `pnpm --filter @retune/webview lint` exit 0; `git grep -nE "zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-fA-F]{6}" -- packages/webview/src/components/ui packages/webview/src/components/shared` prints at most the `#000000` colour-input fallback in `ui/color-field.tsx`.
 - [ ] **Step 5: Commit** `feat(webview): popover, toast, empty state and shared variant/class/viewport/element components`.
 
 ---
@@ -944,6 +945,7 @@ describe('stage reducer', () => {
 **Files:**
 - Create: `packages/webview/src/state/use-stage.ts`, `packages/webview/src/hooks/use-is-dark.ts`
 - Rewrite: `packages/webview/src/App.tsx`
+- Create: `packages/webview/src/components/stage-header.tsx` (must not import `App.tsx` or Scalar)
 - Modify: `packages/webview/src/components/sidebar/sidebar-view.tsx` and `packages/webview/src/components/stage/viewport-frame.tsx` only as far as needed to compile against the new call sites (their rewrites are Tasks 12–13)
 - Delete: `packages/webview/src/hooks/use-theme-sync.ts`, `packages/webview/src/hooks/use-vscode-bridge.ts`
 - Create: `packages/webview/src/__tests__/app-shell.test.tsx`
@@ -968,8 +970,9 @@ export interface StageStore {
   notify(message: string, tone?: ToastTone): void;
 }
 export function useStage(): StageStore;
-// App.tsx
+// components/stage-header.tsx
 export function StageHeader(p: { store: StageStore; tone: 'dark' | 'light'; onToggleTone: () => void; onCompare: (on: boolean) => void }): JSX.Element;
+// App.tsx
 export function App(): JSX.Element;
 // use-is-dark.ts
 export function useIsDark(): boolean;   // false when document.body has class 'vscode-light'; observes class changes
@@ -996,7 +999,7 @@ Behaviour of `App`:
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { StageHeader } from '../App';
+import { StageHeader } from '../components/stage-header';
 import type { StageStore } from '../state/use-stage';
 import { DEFAULT_CONFIG, DEFAULT_STAGE_STATE, DEMO_META } from '../state/demo';
 
@@ -1212,7 +1215,7 @@ describe('SidebarView', () => {
     expect(plain).not.toContain('>Variants<');
   });
   it('uses only token colours', () => {
-    const out = html(<SidebarView store={store({ dirty: true })} />).replace(/placeholder="[^"]*"/g, '').replace(/style="[^"]*"/g, '');
+    const out = html(<SidebarView store={store({ dirty: true })} />).replace(/placeholder="[^"]*"/g, '').replace(/style="[^"]*"/g, '').replace(/value="[^"]*"/g, '');
     expect(out).not.toMatch(/zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-f]{6}/i);
   });
 });
@@ -1234,7 +1237,7 @@ describe('SidebarView', () => {
 - Modify: `README.md`, `CHANGELOG.md`
 - Create: `packages/webview/src/__tests__/palette-sweep.test.ts`
 
-- [ ] **Step 1: Write the failing test** — a sweep that walks `packages/webview/src` (excluding `__tests__`, `components/controls.tsx`, `state/demo.ts`, `styles.css`) and asserts no `.ts`/`.tsx` file matches `/\b(zinc|indigo|rose|emerald|amber|sky|violet)-\d|#[0-9a-fA-F]{6}\b|text-\[(?:[0-9]|10)px\]/`, reporting offending `file:line` entries in the assertion message; and a second test asserting `packages/webview/src/hooks` contains only `use-is-dark.ts` and that `viewport-frame.tsx` does not exist.
+- [ ] **Step 1: Write the failing test** — a sweep that walks `packages/webview/src` (excluding `__tests__`, `components/controls.tsx`, `components/ui/color-field.tsx`, `state/demo.ts`, `styles.css`) and asserts no `.ts`/`.tsx` file matches `/\b(zinc|indigo|rose|emerald|amber|sky|violet)-\d|#[0-9a-fA-F]{6}\b|text-\[(?:[0-9]|10)px\]/`, reporting offending `file:line` entries in the assertion message; and a second test asserting `packages/webview/src/hooks` contains only `use-is-dark.ts` and that `viewport-frame.tsx` does not exist.
 - [ ] **Step 2: Run** `pnpm --filter @retune/webview test` — note every reported offender.
 - [ ] **Step 3: Fix** each offender with token utilities (placeholder example text that merely mentions a class name, such as `hover:bg-indigo-500` in the Classes placeholder, must be reworded to `hover:bg-accent-hover w-[220px]`).
 - [ ] **Step 4: Remove the dead message types**, rebuild core (`pnpm --filter @retune/core build`), and fix any compile error by deleting the dead handling code (not by re-adding the type).

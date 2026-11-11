@@ -1,3 +1,5 @@
+import type { ElementInfo } from '../ast/jsx-mutator';
+
 export interface CvaVariantMap {
   [variantGroup: string]: string[];
 }
@@ -38,6 +40,7 @@ export interface ComponentMetadata {
   cva: CvaMetadata;
   props: PropDefinition[];
   rawSource: string;
+  elements?: ElementInfo[];
 }
 
 export interface StageState {
@@ -45,6 +48,8 @@ export interface StageState {
   selectedVariants: Record<string, string>;
   propValues: Record<string, string | boolean | number>;
   harmonicsClass: string;
+  baselineClass: string;
+  targetIndex?: number;
   viewport: ViewportPreset;
   showGrid: boolean;
   activeTab: StageTabId;
@@ -52,7 +57,8 @@ export interface StageState {
 
 export type WebviewMessage =
   | { type: 'READY' }
-  | { type: 'MUTATE_CLASSES'; payload: { componentName: string; className: string } }
+  | { type: 'MUTATE_CLASSES'; payload: { className: string; componentName?: string } }
+  | { type: 'SELECT_ELEMENT'; payload: { name: string; index: number } | null }
   | { type: 'MUTATE_VARIANT'; payload: { variantGroup: string; variantValue: string } }
   | { type: 'UPDATE_PROP_VALUE'; payload: { propName: string; value: string | boolean | number } }
   | { type: 'UPDATE_STAGE_STATE'; payload: Partial<StageState> }
@@ -61,8 +67,9 @@ export type WebviewMessage =
   | { type: 'SWITCH_TAB'; payload: { tab: StageTabId } };
 
 export type HostMessage =
-  | { type: 'SYNC_COMPONENT'; payload: ComponentMetadata }
+  | { type: 'SYNC_COMPONENT'; payload: ComponentMetadata | null }
   | { type: 'SYNC_STAGE_STATE'; payload: StageState }
   | { type: 'SYNC_CONFIG'; payload: RetuneExtensionConfig }
   | { type: 'THEME_CHANGED'; payload: { isDark: boolean; highContrast: boolean } }
-  | { type: 'MUTATION_SUCCESS'; payload: { updatedCode: string } };
+  | { type: 'MUTATION_SUCCESS'; payload: { updatedCode: string } }
+  | { type: 'MUTATION_RESULT'; payload: { ok: boolean; kind: 'classes' | 'variant'; message: string } };

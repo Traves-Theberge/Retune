@@ -47,6 +47,8 @@ const DEFAULT_STAGE_STATE: StageState = {
   },
   harmonicsClass:
     'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors',
+  baselineClass:
+    'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors',
   viewport: 'responsive',
   showGrid: true,
   activeTab: 'stage',
@@ -164,11 +166,16 @@ export function App() {
       const msg = event.data;
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === 'SYNC_COMPONENT') {
-        setMeta(msg.payload);
+        if (!msg.payload) {
+          setMeta(null);
+          return;
+        }
+        const payload = msg.payload;
+        setMeta(payload);
         setStageState((prev) => ({
           ...prev,
-          selectedVariants: msg.payload.cva.defaultVariants || {},
-          harmonicsClass: msg.payload.cva.baseClasses || prev.harmonicsClass,
+          selectedVariants: payload.cva.defaultVariants || {},
+          harmonicsClass: payload.cva.baseClasses || prev.harmonicsClass,
         }));
       } else if (msg.type === 'SYNC_STAGE_STATE') {
         setStageState(msg.payload);
@@ -228,7 +235,7 @@ export function App() {
       const targetComp = stageState.targetElement || meta.componentName;
       postToHost({
         type: 'MUTATE_CLASSES',
-        payload: { componentName: targetComp, className: newClasses },
+        payload: { className: newClasses },
       });
 
       // In standalone browser mode, also call the live local Retune Daemon AST mutation endpoint!

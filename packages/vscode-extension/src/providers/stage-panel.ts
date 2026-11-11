@@ -24,6 +24,7 @@ export class StagePanel {
     selectedVariants: {},
     propValues: {},
     harmonicsClass: '',
+    baselineClass: '',
     viewport: 'responsive',
     showGrid: true,
     activeTab: 'stage',
@@ -216,9 +217,9 @@ export class StagePanel {
 
     if (message.type === 'MUTATE_CLASSES' && StagePanel._activeDocument) {
       const doc = StagePanel._activeDocument;
-      const { componentName, className } = message.payload;
+      const { className } = message.payload;
       const originalText = doc.getText();
-      const mutated = mutateClassName(originalText, componentName, className);
+      const mutated = mutateClassName(originalText, StagePanel._stageState.targetElement ?? '', className);
 
       if (mutated !== originalText) {
         const fullRange = new vscode.Range(

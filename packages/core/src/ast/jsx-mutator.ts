@@ -275,3 +275,28 @@ export function computeDefaultVariantEdit(
 export function mutateDefaultVariant(source: string, variantGroup: string, variantValue: string): string {
   return applyEdits(source, computeDefaultVariantEdit(source, variantGroup, variantValue));
 }
+
+/** Compute the minimal edit that replaces the base class literal passed to the first `cva()` call. */
+export function computeCvaBaseEdit(source: string, newBase: string): TextEdit | null {
+  try {
+    let cvaCall: t.CallExpression | undefined;
+    walk(parseSource(source).program, (n) => {
+      if (cvaCall || !t.isCallExpression(n)) return;
+      const callee = n.callee;
+      const isCva =
+        (t.isIdentifier(callee) && callee.name === 'cva') ||
+        (t.isMemberExpression(callee) && !callee.computed && t.isIdentifier(callee.property) && callee.property.name === 'cva');
+      if (isCva) cvaCall = n;
+    });
+    const first = cvaCall?.arguments[0];
+    if (!first || !(t.isStringLiteral(first) || isPlainTemplate(first))) return null;
+    const quote = quoteFor(source, first);
+    return { start: first.start!, end: first.end!, text: `${quote}${escapeFor(newBase, quote)}${quote}` };
+  } catch {
+    return null;
+  }
+}
+
+export function mutateCvaBase(source: string, newBase: string): string {
+  return applyEdits(source, computeCvaBaseEdit(source, newBase));
+}

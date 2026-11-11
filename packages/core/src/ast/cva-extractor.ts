@@ -29,7 +29,7 @@ export function extractCvaMetadata(sourceCode: string): CvaMetadata {
           t.isIdentifier(callee.property) &&
           callee.property.name === 'cva');
 
-      if (!isCva) return;
+      if (!isCva || metadata.hasCva) return;
 
       metadata.hasCva = true;
 
@@ -40,6 +40,8 @@ export function extractCvaMetadata(sourceCode: string): CvaMetadata {
       // 1. Extract Base Classes
       if (args.length > 0 && t.isStringLiteral(args[0])) {
         metadata.baseClasses = args[0].value;
+      } else if (args.length > 0 && t.isTemplateLiteral(args[0]) && args[0].expressions.length === 0) {
+        metadata.baseClasses = args[0].quasis[0]?.value.cooked ?? '';
       } else if (args.length > 0 && t.isArrayExpression(args[0])) {
         metadata.baseClasses = args[0].elements
           .filter((el): el is t.StringLiteral => t.isStringLiteral(el))

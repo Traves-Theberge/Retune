@@ -99,3 +99,46 @@ describe('jsx-mutator: defaultVariants', () => {
   });
 });
 
+
+describe('final-review regressions', () => {
+  it('A1: offset of an element adjacent to a shorter tag targets that element', () => {
+    const src = 'const x = <ul><li><a className="one">t</a></li></ul>;';
+    const a = listElements(src).find((e) => e.name === 'a')!;
+    const out = applyEdits(src, computeClassNameEdit(src, { offset: a.start }, 'NEW'));
+    expect(out).toBe('const x = <ul><li><a className="NEW">t</a></li></ul>;');
+  });
+
+  it('A3: interpolated template reads the leading quasi and writes it back', () => {
+    const src = 'const x = <div className={`flex px-2 ${x}`} />;';
+    expect(listElements(src)[0].className).toBe('flex px-2');
+    expect(mutateClassName(src, 'div', 'flex px-[12px]')).toBe('const x = <div className={`flex px-[12px] ${x}`} />;');
+  });
+
+  it('A3: the generated wrapper is read and replaced in place, never nested', () => {
+    const src = 'const x = <div className={c} />;';
+    const once = mutateClassName(src, 'div', 'p-1');
+    expect(listElements(once)[0].className).toBe('p-1');
+    expect(mutateClassName(once, 'div', 'p-2')).toBe('const x = <div className={["p-2", c].filter(Boolean).join(" ")} />;');
+  });
+
+  it('A3: bare dynamic expression reads empty', () => {
+    expect(listElements('const x = <div className={c} />;')[0].className).toBe('');
+  });
+
+  it('A4: quotes in a bare attribute switch quote style or use an expression container', () => {
+    expect(mutateClassName('const x = <a className="x" />;', 'a', 'content-["y"]')).toBe(
+      `const x = <a className='content-["y"]' />;`
+    );
+    const both = `a-["x"] b-['y'] c\d`;
+    const out = mutateClassName('const x = <a className="x" />;', 'a', both);
+    expect(out).toContain('className={"');
+    expect(listElements(out)[0].className).toBe(both);
+    const fresh = mutateClassName('const x = <a />;', 'a', 'content-["y"]');
+    expect(listElements(fresh)[0].className).toBe('content-["y"]');
+  });
+
+  it('A5: new attribute on a generic component goes after the type arguments', () => {
+    const src = 'const x = <Foo<T> bar />;';
+    expect(mutateClassName(src, 'Foo', 'p-1')).toBe('const x = <Foo<T> className="p-1" bar />;');
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeCvaBaseEdit, mutateCvaBase } from '../ast/jsx-mutator';
+import { extractCvaMetadata } from '../ast/cva-extractor';
 
 const SRC = `// keep
 const b = cva(
@@ -31,5 +32,21 @@ describe('computeCvaBaseEdit', () => {
   it('produces one small edit', () => {
     const edit = computeCvaBaseEdit(SRC, 'p-1')!;
     expect(SRC.slice(edit.start, edit.end)).toBe("'inline-flex gap-2'");
+  });
+});
+
+describe('final-review regressions: single cva source of truth', () => {
+  it('A2: the first cva() call is the component cva for metadata and edit', () => {
+    const src = 'const a = cva("first-base", { variants: { size: { sm: "h-8" } } });\nconst b = cva("second-base", { variants: { tone: { x: "y" } } });\n';
+    const meta = extractCvaMetadata(src);
+    expect(meta.cvaIdentifier).toBe('a');
+    expect(meta.baseClasses).toBe('first-base');
+    expect(Object.keys(meta.variants)).toEqual(['size']);
+    expect(mutateCvaBase(src, 'changed')).toBe(src.replace('"first-base"', '"changed"'));
+  });
+  it('A2: expression-free template base is read and edited', () => {
+    const src = 'const b = cva(`inline-flex px-4`, {});';
+    expect(extractCvaMetadata(src).baseClasses).toBe('inline-flex px-4');
+    expect(mutateCvaBase(src, 'inline-flex px-[12px]')).toBe('const b = cva(`inline-flex px-[12px]`, {});');
   });
 });

@@ -83,8 +83,10 @@ function findElement(
 ): t.JSXOpeningElement | undefined {
   if (target.offset !== undefined) {
     const offset = target.offset;
+    const exact = elements.find((el) => el.start === offset);
+    if (exact) return exact;
     const containing = elements
-      .filter((el) => el.start! <= offset && offset <= el.end!)
+      .filter((el) => el.start! <= offset && offset < el.end!)
       .sort((a, b) => a.end! - a.start! - (b.end! - b.start!));
     if (containing[0]) return containing[0];
   }
@@ -108,6 +110,41 @@ function isPlainTemplate(n: t.Node): n is t.TemplateLiteral {
   return t.isTemplateLiteral(n) && n.expressions.length === 0;
 }
 
+/** Recognise `["…", expr].filter(Boolean).join(" ")` (the wrapper this tool writes) and return its string. */
+function generatedWrapperString(expr: t.Node): t.StringLiteral | undefined {
+  if (!t.isCallExpression(expr)) return undefined;
+  const join = expr.callee;
+  if (!t.isMemberExpression(join) || join.computed || !t.isIdentifier(join.property, { name: 'join' })) return undefined;
+  const filter = join.object;
+  if (!t.isCallExpression(filter)) return undefined;
+  const fcallee = filter.callee;
+  if (!t.isMemberExpression(fcallee) || fcallee.computed || !t.isIdentifier(fcallee.property, { name: 'filter' })) return undefined;
+  if (filter.arguments.length !== 1 || !t.isIdentifier(filter.arguments[0], { name: 'Boolean' })) return undefined;
+  const arr = fcallee.object;
+  if (!t.isArrayExpression(arr)) return undefined;
+  const first = arr.elements[0];
+  return t.isStringLiteral(first) ? first : undefined;
+}
+
+/** The classes an element statically carries: exactly what a write replaces. */
+function staticClasses(el: t.JSXOpeningElement): string {
+  const value = classNameAttr(el)?.value;
+  const node = staticClassNode(value);
+  if (node) return readClass(node);
+  if (value && t.isJSXExpressionContainer(value) && t.isTemplateLiteral(value.expression)) {
+    return (value.expression.quasis[0]?.value.cooked ?? '').trim();
+  }
+  return '';
+}
+
+/** Text for a bare JSX attribute value; JSX attribute strings have no backslash escapes. */
+function attrValueText(text: string, preferred: '"' | "'" = '"'): string {
+  const other = preferred === '"' ? "'" : '"';
+  if (!text.includes(preferred)) return `${preferred}${text}${preferred}`;
+  if (!text.includes(other)) return `${other}${text}${other}`;
+  return `{${JSON.stringify(text)}}`;
+}
+
 /** Find the string node that carries the "static" class list inside a className value. */
 function staticClassNode(value: t.Node | null | undefined): t.StringLiteral | t.TemplateLiteral | undefined {
   if (!value) return undefined;
@@ -116,6 +153,8 @@ function staticClassNode(value: t.Node | null | undefined): t.StringLiteral | t.
   const expr = value.expression;
   if (t.isStringLiteral(expr) || isPlainTemplate(expr)) return expr;
   if (t.isTemplateLiteral(expr)) return undefined;
+  const wrapped = generatedWrapperString(expr);
+  if (wrapped) return wrapped;
   if (t.isCallExpression(expr) && t.isIdentifier(expr.callee) && CLASS_HELPERS.has(expr.callee.name)) {
     return expr.arguments.find(
       (a): a is t.StringLiteral | t.TemplateLiteral => t.isStringLiteral(a) || (t.isTemplateLiteral(a) && isPlainTemplate(a))
@@ -150,8 +189,7 @@ export function extractElementClassName(source: string, targetComponent?: string
   try {
     const el = findElement(openingElements(source), { name: targetComponent, offset });
     if (!el) return '';
-    const node = staticClassNode(classNameAttr(el)?.value);
-    return node ? readClass(node) : '';
+    return staticClasses(el);
   } catch {
     return '';
   }
@@ -161,14 +199,13 @@ export function extractElementClassName(source: string, targetComponent?: string
 export function listElements(source: string): ElementInfo[] {
   try {
     return openingElements(source).map((el) => {
-      const node = staticClassNode(classNameAttr(el)?.value);
       return {
         name: elementName(el),
         start: el.start!,
         end: el.end!,
         line: el.loc?.start.line ?? 0,
         column: el.loc?.start.column ?? 0,
-        className: node ? readClass(node) : '',
+        className: staticClasses(el),
       };
     });
   } catch {
@@ -187,18 +224,24 @@ export function computeClassNameEdit(
 
   const attr = classNameAttr(el);
   if (!attr) {
-    return { start: el.name.end!, end: el.name.end!, text: ` className="${escapeFor(newClassName, '"')}"` };
+    const typeArgs = (el as any).typeArguments ?? (el as any).typeParameters;
+    const at = (typeArgs?.end ?? el.name.end) as number;
+    return { start: at, end: at, text: ` className=${attrValueText(newClassName)}` };
   }
 
   const stat = staticClassNode(attr.value);
   if (stat) {
+    if (stat === attr.value) {
+      const preferred = source[stat.start!] === "'" ? "'" : '"';
+      return { start: stat.start!, end: stat.end!, text: attrValueText(newClassName, preferred) };
+    }
     const quote = quoteFor(source, stat);
     return { start: stat.start!, end: stat.end!, text: `${quote}${escapeFor(newClassName, quote)}${quote}` };
   }
 
   const value = attr.value;
   if (!value) {
-    return { start: attr.start!, end: attr.end!, text: `className="${escapeFor(newClassName, '"')}"` };
+    return { start: attr.start!, end: attr.end!, text: `className=${attrValueText(newClassName)}` };
   }
 
   if (t.isJSXExpressionContainer(value)) {
@@ -226,7 +269,7 @@ export function computeClassNameEdit(
     }
   }
 
-  return { start: value.start!, end: value.end!, text: `"${escapeFor(newClassName, '"')}"` };
+  return { start: value.start!, end: value.end!, text: attrValueText(newClassName) };
 }
 
 export function mutateClassName(

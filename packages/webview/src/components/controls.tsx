@@ -16,15 +16,15 @@ export const WEIGHT = ['font-normal', 'font-medium', 'font-semibold', 'font-bold
 export const RADIUS = ['rounded-none', 'rounded', 'rounded-md', 'rounded-lg', 'rounded-xl', 'rounded-full'];
 export const SHADOW = ['shadow-none', 'shadow-sm', 'shadow', 'shadow-lg', 'shadow-xl'];
 export const BG_PRESETS = [
-  { token: 'bg-indigo-600', color: '#4f46e5' },
-  { token: 'bg-zinc-800', color: '#27272a' },
-  { token: 'bg-emerald-600', color: '#059669' },
-  { token: 'bg-rose-600', color: '#e11d48' },
-  { token: 'bg-sky-600', color: '#0284c7' },
-  { token: 'bg-violet-600', color: '#7c3aed' },
-  { token: 'bg-amber-500', color: '#f59e0b' },
-  { token: 'bg-white', color: '#ffffff' },
-  { token: 'bg-transparent', color: 'transparent' },
+  { token: 'bg-indigo-600', name: 'Indigo', color: '#4f46e5' },
+  { token: 'bg-zinc-800', name: 'Graphite', color: '#27272a' },
+  { token: 'bg-emerald-600', name: 'Emerald', color: '#059669' },
+  { token: 'bg-rose-600', name: 'Rose', color: '#e11d48' },
+  { token: 'bg-sky-600', name: 'Sky', color: '#0284c7' },
+  { token: 'bg-violet-600', name: 'Violet', color: '#7c3aed' },
+  { token: 'bg-amber-500', name: 'Amber', color: '#f59e0b' },
+  { token: 'bg-white', name: 'White', color: '#ffffff' },
+  { token: 'bg-transparent', name: 'Transparent', color: 'transparent' },
 ];
 export const BG_TOKENS = BG_PRESETS.map((p) => p.token);
 
@@ -120,9 +120,9 @@ export function createClassEditor(classes: string, set: (next: string) => void) 
           <button
             key={p.token}
             type="button"
-            aria-label={p.token}
+            aria-label={p.name}
             aria-pressed={active}
-            title={p.token}
+            title={p.name}
             onClick={() => pickPreset(BG_TOKENS, p.token)}
             className={`w-4 h-4 rounded-full border transition outline-none focus-visible:ring-1 focus-visible:ring-focus ${
               active ? 'border-focus ring-1 ring-focus' : 'border-line'

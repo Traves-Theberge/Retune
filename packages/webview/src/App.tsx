@@ -45,28 +45,10 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sync, undo, redo]);
 
-  const sidebar = (
-    <SidebarView
-      meta={meta}
-      stageState={stage}
-      config={config}
-      onSelectVariant={store.selectVariant}
-      onCommitVariant={store.commitVariant}
-      onUpdateProp={store.setProp}
-      onUpdateHarmonics={(classes, commit) => {
-        if (classes !== stage.harmonicsClass) store.setClasses(classes);
-        if (commit) store.sync();
-      }}
-      onUpdateStageState={store.patchStage}
-      onUpdateConfig={store.patchConfig}
-      onOpenStageTab={(openMode, tab) => store.openStage(openMode, tab)}
-    />
-  );
-
   if (isSidebarMode()) {
     return (
       <>
-        {sidebar}
+        <SidebarView store={store} />
         <Toast toast={store.toast} />
       </>
     );
@@ -74,7 +56,11 @@ export function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas text-fg">
-      {hostKind === 'standalone' && <aside className="h-full w-72 shrink-0 overflow-hidden">{sidebar}</aside>}
+      {hostKind === 'standalone' && (
+        <aside className="h-full w-72 shrink-0 overflow-hidden">
+          <SidebarView store={store} embedded />
+        </aside>
+      )}
 
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
         <StageHeader

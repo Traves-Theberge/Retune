@@ -1,0 +1,42 @@
+import React from 'react';
+import { describe, it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { SidebarView } from '../components/sidebar/sidebar-view';
+import type { StageStore } from '../state/use-stage';
+import { DEFAULT_CONFIG, DEFAULT_STAGE_STATE, DEMO_META } from '../state/demo';
+
+const noop = () => {};
+const store = (over: Partial<StageStore> = {}): StageStore => ({
+  hostKind: 'vscode', meta: DEMO_META, config: DEFAULT_CONFIG, stage: DEFAULT_STAGE_STATE,
+  dirty: false, canUndo: false, canRedo: false, toast: null, targetLabel: 'buttonVariants', previewClass: '', baselinePreviewClass: '',
+  setClasses: noop, undo: noop, redo: noop, discard: noop, sync: noop, selectVariant: noop, commitVariant: noop, setProp: noop,
+  patchStage: noop, patchConfig: noop, selectElement: noop, openStage: noop, notify: noop, ...over,
+});
+const html = (el: React.ReactElement) => renderToStaticMarkup(el);
+
+describe('SidebarView', () => {
+  it('renders the sections in order with one disabled Sync while clean', () => {
+    const out = html(<SidebarView store={store()} />);
+    const order = ['Element', 'Content', 'Variants', 'Layout', 'Typography', 'Appearance', 'Classes', 'Workspace'].map((t) => out.indexOf(`>${t}<`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(out.match(/>Sync</g)?.length).toBe(1);
+    expect(out).toMatch(/disabled=""[^>]*title="Sync to code \(Ctrl\+S\)"|title="Sync to code \(Ctrl\+S\)"[^>]*disabled=""/);
+    expect(out).toContain('role="listbox"');
+  });
+  it('shows the dirty dot and hides the header when embedded', () => {
+    expect(html(<SidebarView store={store({ dirty: true })} />)).toContain('aria-label="Unsynced changes"');
+    const embedded = html(<SidebarView store={store({ dirty: true })} embedded />);
+    expect(embedded).not.toContain('>Sync<'); expect(embedded).toContain('>Layout<');
+  });
+  it('shows the empty state without a component and omits Variants without cva', () => {
+    const empty = html(<SidebarView store={store({ meta: null })} />);
+    expect(empty).toContain('No component selected'); expect(empty).not.toContain('>Layout<');
+    const plain = html(<SidebarView store={store({ meta: { ...DEMO_META, cva: { ...DEMO_META.cva, hasCva: false, variants: {} } } })} />);
+    expect(plain).not.toContain('>Variants<');
+  });
+  it('uses only token colours', () => {
+    const out = html(<SidebarView store={store({ dirty: true })} />).replace(/placeholder="[^"]*"/g, '').replace(/style="[^"]*"/g, '').replace(/value="[^"]*"/g, '');
+    expect(out).not.toMatch(/zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-f]{6}/i);
+  });
+});

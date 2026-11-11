@@ -32,7 +32,7 @@ export const DEMO_SOURCE = `import * as React from 'react';
 import { cva } from 'class-variance-authority';
 
 // Non-lossy AST comments are preserved on mutation!
-export const buttonVariants = cva(
+const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors',
   {
     variants: {

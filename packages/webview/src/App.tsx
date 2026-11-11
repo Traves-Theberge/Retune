@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ApiReferenceReact } from '@scalar/api-reference-react';
 import '@scalar/api-reference-react/style.css';
-import { ViewportFrame } from './components/stage/viewport-frame';
+import { Stage } from './components/stage/stage';
 import { SidebarView } from './components/sidebar/sidebar-view';
 import { StageHeader } from './components/stage-header';
 import { EmptyState, Toast } from './components/ui';
@@ -28,7 +28,6 @@ export function App() {
   const { sync, undo, redo, stage, meta, config, hostKind } = store;
   const [tone, setTone] = useState<'dark' | 'light'>(isDark ? 'dark' : 'light');
   const [comparing, setComparing] = useState(false);
-  const [showInspector, setShowInspector] = useState(true);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -75,7 +74,7 @@ export function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas text-fg">
-      {hostKind === 'standalone' && showInspector && <aside className="h-full w-72 shrink-0 overflow-hidden">{sidebar}</aside>}
+      {hostKind === 'standalone' && <aside className="h-full w-72 shrink-0 overflow-hidden">{sidebar}</aside>}
 
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
         <StageHeader
@@ -88,30 +87,7 @@ export function App() {
         <main className={`relative flex-1 overflow-hidden ${tone === 'dark' ? 'bg-stage-dark' : 'bg-stage-light'}`}>
           {stage.activeTab === 'stage' &&
             (meta ? (
-              <div className="flex h-full flex-col">
-                <ViewportFrame
-                  componentName={meta.componentName}
-                  targetElement={stage.targetElement}
-                  computedClass={comparing ? store.baselinePreviewClass : store.previewClass}
-                  classes={stage.harmonicsClass}
-                  onChangeClasses={store.setClasses}
-                  label={String(stage.propValues.label ?? '')}
-                  onChangeLabel={(next) => store.setProp('label', next)}
-                  cva={meta.cva}
-                  selectedVariants={stage.selectedVariants}
-                  onSelectVariant={store.selectVariant}
-                  onCommitVariant={store.commitVariant}
-                  disabled={Boolean(stage.propValues.disabled)}
-                  onToggleDisabled={() => store.setProp('disabled', !Boolean(stage.propValues.disabled))}
-                  onOpenInspector={() => setShowInspector(true)}
-                  viewport={stage.viewport}
-                  showGrid={stage.showGrid}
-                  onSyncAst={store.sync}
-                  onResetVariants={() => store.patchStage({ selectedVariants: { ...(meta.cva.defaultVariants || {}) } })}
-                  onSelectViewport={(viewport) => store.patchStage({ viewport })}
-                  onSwitchTab={(activeTab) => store.patchStage({ activeTab })}
-                />
-              </div>
+              <Stage store={store} tone={tone} comparing={comparing} />
             ) : (
               <EmptyState title="No component selected" hint="Open a .tsx or .jsx file to start tuning." />
             ))}

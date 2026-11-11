@@ -16,8 +16,63 @@
 @source inline("{ring-0,ring-1,ring-2,ring-indigo-500,ring-zinc-500,ring-emerald-500,ring-rose-500}");
 @source inline("{scale-95,scale-100,scale-105,opacity-50,opacity-75,opacity-100}");
 
+/* Host-mapped design tokens (spec §6). Each --rt-* reads a VS Code variable and falls back to the dark value. */
 :root {
   color-scheme: dark;
+
+  --rt-canvas: var(--vscode-editor-background, #09090b);
+  --rt-panel: var(--vscode-sideBar-background, #0e0e12);
+  --rt-raised: var(--vscode-input-background, #16161b);
+  --rt-overlay: var(--vscode-menu-background, #111116);
+  --rt-line: var(--vscode-panel-border, #27272a);
+  --rt-fg: var(--vscode-foreground, #e4e4e7);
+  --rt-muted: var(--vscode-descriptionForeground, #a1a1aa);
+  --rt-subtle: var(--vscode-disabledForeground, #71717a);
+  --rt-accent: var(--vscode-button-background, #4f46e5);
+  --rt-accent-fg: var(--vscode-button-foreground, #ffffff);
+  --rt-accent-hover: var(--vscode-button-hoverBackground, #6366f1);
+  --rt-focus: var(--vscode-focusBorder, #6366f1);
+  --rt-hover: var(--vscode-list-hoverBackground, #27272a);
+  --rt-active: var(--vscode-list-activeSelectionBackground, #3f3f46);
+  --rt-active-fg: var(--vscode-list-activeSelectionForeground, #ffffff);
+  --rt-danger: var(--vscode-errorForeground, #f43f5e);
+  --rt-success: var(--vscode-testing-iconPassed, #10b981);
+  --rt-warn: var(--vscode-editorWarning-foreground, #f59e0b);
+  --rt-font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif);
+  --rt-mono: var(--vscode-editor-font-family, ui-monospace, Consolas, monospace);
+
+  /* Stage backdrop tones: fixed, independent of the host theme. */
+  --rt-stage-dark: #09090b;
+  --rt-stage-light: #f4f4f5;
+}
+
+body.vscode-light {
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-canvas: var(--rt-canvas);
+  --color-panel: var(--rt-panel);
+  --color-raised: var(--rt-raised);
+  --color-overlay: var(--rt-overlay);
+  --color-line: var(--rt-line);
+  --color-fg: var(--rt-fg);
+  --color-muted: var(--rt-muted);
+  --color-subtle: var(--rt-subtle);
+  --color-accent: var(--rt-accent);
+  --color-accent-fg: var(--rt-accent-fg);
+  --color-accent-hover: var(--rt-accent-hover);
+  --color-focus: var(--rt-focus);
+  --color-hover: var(--rt-hover);
+  --color-active: var(--rt-active);
+  --color-active-fg: var(--rt-active-fg);
+  --color-danger: var(--rt-danger);
+  --color-success: var(--rt-success);
+  --color-warn: var(--rt-warn);
+  --color-stage-dark: var(--rt-stage-dark);
+  --color-stage-light: var(--rt-stage-light);
+  --font-sans: var(--rt-font);
+  --font-mono: var(--rt-mono);
 }
 
 * {
@@ -31,9 +86,10 @@ body,
   width: 100%;
   margin: 0;
   padding: 0;
-  background-color: #09090b;
-  color: #e4e4e7;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  background-color: var(--rt-canvas);
+  color: var(--rt-fg);
+  font-family: var(--rt-font);
+  font-size: 12px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -48,11 +104,11 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(113, 113, 122, 0.3);
+  background: color-mix(in srgb, var(--rt-muted) 35%, transparent);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(113, 113, 122, 0.5);
+  background: color-mix(in srgb, var(--rt-muted) 55%, transparent);
 }
 

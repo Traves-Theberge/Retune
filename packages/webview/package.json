@@ -12,6 +12,7 @@
   "dependencies": {
     "@retune/core": "workspace:*",
     "@scalar/api-reference-react": "^0.9.88",
+    "@tailwindcss/browser": "4.3.5",
     "lucide-react": "^1.70.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

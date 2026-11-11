@@ -5,8 +5,8 @@
 ## Features
 
 - **Editor Tab System (`The Stage`, `AST & Props`, `Scalar API`)**: Open the visual stage as a full Editor Tab (`Retune: Open Visual Stage in Editor Tab`) or split beside your code (`Retune: Open Visual Stage in Split Editor`).
-- **Activity Bar Sidebar (`Params & Configuration`)**: Tune CVA variants (`Tone`), edit component TypeScript props in real time, toggle Tailwind utility tokens (`Harmonics`), and manage extension settings without leaving your editor.
-- **Format-Preserving AST Mutations**: Powered by `recast` and `@babel/parser` so your comments, formatting, and imports remain untouched.
+- **Activity Bar Sidebar (`Params & Configuration`)**: Pick an element from the element list, edit its Tailwind classes and component props in real time, write the result back with a single Sync, and manage extension settings without leaving your editor.
+- **Minimal Text Edits**: Computed with `@babel/parser` and applied as small splices so your comments, formatting, and imports remain untouched.
 - **Inline CodeLens & Shortcuts**: Click `Retune: Open Visual Stage` directly above `cva(...)` declarations or press `Ctrl+Shift+R` (`Cmd+Shift+R` on macOS).
 
 ## Commands

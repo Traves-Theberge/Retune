@@ -23,6 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Content Security Policy and offline Tailwind**: The webview has a nonce-based CSP. `@tailwindcss/browser` is bundled, so arbitrary classes render offline and the CDN script is removed.
 - **Approximate preview**: The stage is labelled as an approximate, classes-only preview.
 
+### Fixed
+- Exact element targeting: an offset at the start of a tag no longer matches the tag that ends right before it.
+- Consistent `cva()` handling: the first `cva()` call is read and written, and template-literal base classes are read.
+- Dynamic `className`: interpolated templates and the `[...].filter(Boolean).join(" ")` wrapper are read exactly as they are written, and Sync no longer nests wrappers.
+- Classes containing quotes no longer corrupt JSX attribute strings; generic components get `className` after their type arguments.
+- Undo history is clean after first load and after switching files.
+- Re-selecting the current element keeps unsynced edits; a successful Sync no longer overwrites newer edits.
+- Numeric fields can be typed (committed on blur or Enter); Ctrl/Cmd+Z and Y work after using sliders or colour pickers; AltGr combinations no longer trigger shortcuts.
+- A syntax error in the active file no longer throws out of the extension host.
+
 ### Removed
 - Protocol messages `SWITCH_TAB`, `THEME_CHANGED` and `MUTATION_SUCCESS`. `MUTATE_CLASSES` no longer carries `componentName`.
 

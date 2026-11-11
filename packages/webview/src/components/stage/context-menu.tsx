@@ -33,11 +33,14 @@ export function buildMenu(a: {
   openPanel: (k: PanelKind) => void;
 }): MenuEntry[] {
   const { store, disabled, jsx } = a;
+  const fail = () => store.notify('Copy failed', 'error');
   const copy = (text: string, message: string) => {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => store.notify(message, 'info'))
-      .catch(() => store.notify('Copy failed', 'error'));
+    // navigator.clipboard is undefined in some webview contexts, so guard the synchronous access too.
+    try {
+      navigator.clipboard.writeText(text).then(() => store.notify(message, 'info'), fail);
+    } catch {
+      fail();
+    }
   };
 
   const entries: MenuEntry[] = a.panels.map((p) => ({

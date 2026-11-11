@@ -14,36 +14,51 @@ const GRID_STYLE = {
   backgroundSize: '16px 16px',
 };
 
-const TOOLBAR_BUTTON_WIDTH = 72;
+/** Space kept above and below the element for the tag chip and the W x H badge. */
+const CHIP_CLEARANCE = 24;
+const TOOLBAR_PER_BUTTON = 72;
+const TOOLBAR_PADDING = 12;
 const TOOLBAR_HEIGHT = 32;
 
 function sameRect(a: Rect | null, b: Rect): boolean {
   return !!a && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
 }
 
+function sameSize(a: Size | null, b: Size): boolean {
+  return !!a && a.width === b.width && a.height === b.height;
+}
+
 export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'dark' | 'light'; comparing: boolean }) {
   const { stage, meta } = store;
   const containerRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const elementRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ width: 800, height: 600 });
   const [anchor, setAnchor] = useState<Rect | null>(null);
+  const [toolbarMeasured, setToolbarMeasured] = useState<Size | null>(null);
   const [selected, setSelected] = useState(false);
   const [panel, setPanel] = useState<PanelKind | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Measure the canvas and the selected element. Setters bail out on unchanged values, so running
-  // after every render cannot loop.
+  // Measure the canvas, the selected element and the toolbar. Setters bail out on unchanged
+  // values, so running this after every render cannot loop.
   const measure = () => {
     const c = containerRef.current;
     const e = elementRef.current;
+    const t = toolbarRef.current;
     if (!c) return;
     const next = { width: c.clientWidth, height: c.clientHeight };
-    setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+    setSize((prev) => (sameSize(prev, next) ? prev : next));
     if (e) {
       const cr = c.getBoundingClientRect();
       const er = e.getBoundingClientRect();
       const rect = { left: er.left - cr.left, top: er.top - cr.top, width: er.width, height: er.height };
       setAnchor((prev) => (sameRect(prev, rect) ? prev : rect));
+    }
+    if (t) {
+      const toolbar = { width: t.offsetWidth, height: t.offsetHeight };
+      setToolbarMeasured((prev) => (sameSize(prev, toolbar) ? prev : toolbar));
     }
   };
 
@@ -51,9 +66,15 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
     measure();
   });
 
+  // Transitions (viewport switch, class edits) and container-only resizes change geometry
+  // without a Stage re-render, so observe the layout boxes directly.
   useEffect(() => {
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => measure());
+    for (const node of [containerRef.current, frameRef.current, elementRef.current]) {
+      if (node) observer.observe(node);
+    }
+    return () => observer.disconnect();
     // measure only touches refs and setters, so the first closure stays valid.
   }, []);
 
@@ -88,10 +109,24 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
   const tagChip = `<${tagName}>`;
   const frameWidth = (VIEWPORTS.find((v) => v.id === stage.viewport) ?? VIEWPORTS[0]).widthClass;
 
+  // Until the toolbar has been measured, fall back to a width estimate from the panel count.
+  const toolbarSize = toolbarMeasured ?? {
+    width: panels.length * TOOLBAR_PER_BUTTON + TOOLBAR_PADDING,
+    height: TOOLBAR_HEIGHT,
+  };
+  // The rect is extended so the toolbar clears the tag chip above and the size badge below.
   const toolbarPos = anchor
-    ? placePopover(anchor, { width: panels.length * TOOLBAR_BUTTON_WIDTH + 12, height: TOOLBAR_HEIGHT }, size, {
-        prefer: 'above',
-      })
+    ? placePopover(
+        {
+          left: anchor.left,
+          top: anchor.top - CHIP_CLEARANCE,
+          width: anchor.width,
+          height: anchor.height + 2 * CHIP_CLEARANCE,
+        },
+        toolbarSize,
+        size,
+        { prefer: 'above' },
+      )
     : null;
 
   return (
@@ -102,13 +137,19 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
         setPanel(null);
         setMenu(null);
       }}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(e) => {
+        const target = e.target as HTMLElement;
+        // Keep native cut/copy/paste menus inside text fields in the popover.
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+        e.preventDefault();
+      }}
       className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden p-6 transition-colors ${
         tone === 'light' ? 'bg-stage-light' : 'bg-stage-dark'
       }`}
       style={stage.showGrid ? GRID_STYLE : undefined}
     >
       <div
+        ref={frameRef}
         className={`flex min-h-[260px] items-center justify-center rounded border border-line bg-panel/60 p-14 transition-all duration-150 ${frameWidth}`}
       >
         <div
@@ -164,11 +205,13 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
       )}
 
       {selected && anchor && !panel && toolbarPos && (
-        <SelectionToolbar
-          panels={panels}
+        <div
+          ref={toolbarRef}
+          className="absolute z-20 w-max"
           style={{ left: toolbarPos.left, top: toolbarPos.top }}
-          onOpen={(kind) => setPanel(kind)}
-        />
+        >
+          <SelectionToolbar panels={panels} style={{ position: 'relative' }} onOpen={(kind) => setPanel(kind)} />
+        </div>
       )}
 
       {selected && panel && (

@@ -35,8 +35,8 @@ export function VariantPicker({
                 return (
                   <button
                     key={option}
-                    type="button"
                     aria-pressed={active}
+                    type="button"
                     onClick={() => onSelect(group, option)}
                     className={`rounded px-2 py-0.5 font-mono text-[11px] transition ${focusRing} ${
                       active ? 'bg-active text-active-fg' : 'bg-raised border border-line text-muted hover:text-fg hover:bg-hover'

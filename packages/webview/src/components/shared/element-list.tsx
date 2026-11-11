@@ -32,12 +32,12 @@ export function ElementList({
   });
 
   return (
-    <div role="listbox" className="max-h-40 overflow-y-auto rounded border border-line bg-raised p-0.5">
+    <div role="listbox" aria-label="Elements" className="max-h-40 overflow-y-auto rounded border border-line bg-raised p-0.5">
       <button
-        type="button"
         role="option"
         aria-selected={target.name === undefined}
         data-row="root"
+        type="button"
         onClick={() => onSelect(null)}
         className={rowClass(target.name === undefined)}
       >
@@ -46,10 +46,10 @@ export function ElementList({
       {rows.map(({ element, index, selected }) => (
         <button
           key={`${element.name}-${element.start}`}
-          type="button"
           role="option"
           aria-selected={selected}
           data-row="element"
+          type="button"
           onClick={() => onSelect({ name: element.name, index })}
           className={rowClass(selected)}
         >

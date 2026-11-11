@@ -44,8 +44,14 @@ describe('shared components', () => {
     expect(out).toContain('role="listbox"'); expect(out).toContain('buttonVariants');
     expect(out).toContain('&lt;div&gt;'); expect(out).toContain('L5');
     expect(out.match(/aria-selected="true"/g)?.length).toBe(1);
-    expect(out).toMatch(/aria-selected="true"[^>]*>(?:(?!<\/[a-z]+>\s*<[a-z]+ role="option").)*L5/s);
-    expect(html(<ElementList elements={els} rootLabel="root" target={{}} onSelect={() => {}} />)).toMatch(/aria-selected="true"[^>]*>[^<]*(<[^>]+>)*root/);
+    const rows = out.split('<button role="option"').slice(1);
+    const selectedRows = rows.filter((r) => r.includes('aria-selected="true"'));
+    expect(selectedRows.length).toBe(1);
+    expect(selectedRows[0]).toContain('L5'); expect(selectedRows[0]).not.toContain('L4');
+    const rootOut = html(<ElementList elements={els} rootLabel="root" target={{}} onSelect={() => {}} />);
+    const rootRows = rootOut.split('<button role="option"').slice(1).filter((r) => r.includes('aria-selected="true"'));
+    expect(rootRows.length).toBe(1);
+    expect(rootRows[0]).toContain('root');
   });
   it('renders the empty state copy', () => {
     const out = html(<EmptyState title="No component selected" hint="Open a .tsx or .jsx file to start tuning." />);

@@ -18,21 +18,22 @@ export function ClassChips({
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {splitClasses(classes).map((token) => (
-        <span key={token} className="inline-flex items-center gap-0.5 rounded bg-hover px-1 py-0.5 font-mono text-[11px] text-fg">
+      {splitClasses(classes).map((token, i) => (
+        <span key={`${i}-${token}`} className="inline-flex items-center gap-0.5 rounded bg-hover px-1 py-0.5 font-mono text-[11px] text-fg">
           <span>{token}</span>
           <button
-            type="button"
             aria-label={`Remove ${token}`}
             title={`Remove ${token}`}
+            type="button"
             onClick={() => onChange(removeClass(classes, token))}
             className={`rounded text-subtle hover:text-fg ${focusRing}`}
           >
-            <X size={12} aria-hidden="true" />
+            <X size={14} aria-hidden="true" />
           </button>
         </span>
       ))}
       <input
+        aria-label="Add classes"
         type="text"
         value={draft}
         placeholder={placeholder}

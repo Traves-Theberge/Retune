@@ -69,8 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((event) => {
     if (event.affectsConfiguration('retune')) {
-      StagePanel.currentPanel?.syncAll();
-      sidebarProvider.syncSidebar();
+      StagePanel.syncAll();
     }
   });
 

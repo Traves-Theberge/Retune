@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import { useRef } from 'react';
 import { getArbitrary, setArbitrary, splitClasses } from '../lib/arbitrary-style';
+import { scrubValue } from '../lib/scrub';
+import { ColorField, Row, ScrubInput, Segmented, Section, fieldClass } from './ui';
+
+export { ColorField, Row, Section, Segmented };
 
 /* ---------- Token presets shared by the sidebar, modals and context menu ---------- */
 
@@ -24,135 +28,43 @@ export const BG_PRESETS = [
 ];
 export const BG_TOKENS = BG_PRESETS.map((p) => p.token);
 
-export const field =
-  'bg-[#16161b] border border-zinc-800 focus:border-indigo-500 rounded text-zinc-100 outline-none transition';
+/** Kept for existing callers; the shared field style lives in `ui`. */
+export const field = fieldClass;
 
-/* ---------- Building blocks ---------- */
+/** Numeric control; kept as the name existing callers use. */
+export const Slider = ScrubInput;
 
-export function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[64px_1fr] items-center gap-2">
-      <span className="text-[11px] text-zinc-400 truncate">{label}</span>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
+/* ---------- Scrubbable length row ---------- */
 
-export function Segmented({
-  options,
-  active,
-  onPick,
-}: {
-  options: { id: string; label: string }[];
-  active?: string;
-  onPick: (id: string) => void;
-}) {
-  return (
-    <div className="flex bg-[#16161b] border border-zinc-800 rounded p-0.5 gap-0.5">
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          onClick={() => onPick(o.id)}
-          className={`flex-1 py-0.5 rounded-[3px] text-[10px] font-mono transition ${
-            active === o.id ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function Slider({
+export function LengthRow({
+  label,
   value,
   min,
   max,
   step = 1,
-  unit = 'px',
   onChange,
   onClear,
 }: {
+  label: string;
   value: string | undefined;
   min: number;
   max: number;
   step?: number;
-  unit?: string;
   onChange: (v: string) => void;
   onClear: () => void;
 }) {
-  const num = value !== undefined ? parseFloat(value) : NaN;
-  const has = !Number.isNaN(num);
+  const start = useRef(min);
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={has ? num : min}
-        onChange={(e) => onChange(`${e.target.value}${unit}`)}
-        className="flex-1 min-w-0 accent-indigo-500 h-1"
-      />
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={has ? num : ''}
-        placeholder="–"
-        onChange={(e) => (e.target.value === '' ? onClear() : onChange(`${e.target.value}${unit}`))}
-        className={`${field} w-12 px-1 py-0.5 text-[11px] font-mono text-right`}
-      />
-      <button
-        type="button"
-        onClick={onClear}
-        disabled={!has}
-        title="Reset"
-        className="text-[11px] text-zinc-600 hover:text-zinc-300 disabled:opacity-30 transition"
-      >
-        ↺
-      </button>
-    </div>
-  );
-}
-
-export function ColorField({
-  value,
-  onChange,
-  onClear,
-}: {
-  value: string | undefined;
-  onChange: (v: string) => void;
-  onClear: () => void;
-}) {
-  const hex = value && value.startsWith('#') && value.length === 7 ? value : '#000000';
-  return (
-    <div className="flex items-center gap-2">
-      <input
-        type="color"
-        value={hex}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-6 h-6 rounded border border-zinc-700 bg-transparent p-0 cursor-pointer"
-      />
-      <input
-        type="text"
-        value={value ?? ''}
-        placeholder="#hex / rgb()"
-        onChange={(e) => (e.target.value ? onChange(e.target.value) : onClear())}
-        className={`${field} flex-1 min-w-0 px-2 py-0.5 text-[11px] font-mono`}
-      />
-      <button
-        type="button"
-        onClick={onClear}
-        disabled={!value}
-        title="Reset"
-        className="text-[11px] text-zinc-600 hover:text-zinc-300 disabled:opacity-30 transition"
-      >
-        ↺
-      </button>
-    </div>
+    <Row
+      label={label}
+      onScrubStart={() => {
+        const n = value !== undefined ? parseFloat(value) : NaN;
+        start.current = Number.isNaN(n) ? min : n;
+      }}
+      onScrub={(dx) => onChange(`${scrubValue(start.current, dx, step, min, max)}px`)}
+    >
+      <ScrubInput value={value} min={min} max={max} step={step} onChange={onChange} onClear={onClear} />
+    </Row>
   );
 }
 
@@ -166,15 +78,18 @@ export function createClassEditor(classes: string, set: (next: string) => void) 
     set([...filtered, token].join(' '));
   };
 
+  const lenProps = (prefix: string, conflicts: string[]) => ({
+    value: getArbitrary(classes, prefix, 'length'),
+    onChange: (v: string) => set(setArbitrary(classes, prefix, v, { kind: 'length', conflicts })),
+    onClear: () => set(setArbitrary(classes, prefix, null, { kind: 'length' })),
+  });
+
   const len = (prefix: string, conflicts: string[], min: number, max: number, step = 1) => (
-    <Slider
-      value={getArbitrary(classes, prefix, 'length')}
-      min={min}
-      max={max}
-      step={step}
-      onChange={(v) => set(setArbitrary(classes, prefix, v, { kind: 'length', conflicts }))}
-      onClear={() => set(setArbitrary(classes, prefix, null, { kind: 'length' }))}
-    />
+    <ScrubInput min={min} max={max} step={step} {...lenProps(prefix, conflicts)} />
+  );
+
+  const lenRow = (label: string, prefix: string, conflicts: string[], min: number, max: number, step = 1) => (
+    <LengthRow label={label} min={min} max={max} step={step} {...lenProps(prefix, conflicts)} />
   );
 
   const col = (prefix: string, conflicts: string[] = []) => (
@@ -186,7 +101,7 @@ export function createClassEditor(classes: string, set: (next: string) => void) 
   );
 
   const opacity = (
-    <Slider
+    <ScrubInput
       value={getArbitrary(classes, 'opacity')}
       min={0}
       max={1}
@@ -199,20 +114,23 @@ export function createClassEditor(classes: string, set: (next: string) => void) 
 
   const swatches = (
     <div className="flex flex-wrap gap-1.5">
-      {BG_PRESETS.map((p) => (
-        <button
-          key={p.token}
-          type="button"
-          title={p.token}
-          onClick={() => pickPreset(BG_TOKENS, p.token)}
-          className={`w-4 h-4 rounded-full border transition ${
-            activePreset(BG_TOKENS) === p.token
-              ? 'border-indigo-400 ring-1 ring-indigo-400'
-              : 'border-zinc-600'
-          }`}
-          style={{ backgroundColor: p.color }}
-        />
-      ))}
+      {BG_PRESETS.map((p) => {
+        const active = activePreset(BG_TOKENS) === p.token;
+        return (
+          <button
+            key={p.token}
+            type="button"
+            aria-label={p.token}
+            aria-pressed={active}
+            title={p.token}
+            onClick={() => pickPreset(BG_TOKENS, p.token)}
+            className={`w-4 h-4 rounded-full border transition outline-none focus-visible:ring-1 focus-visible:ring-focus ${
+              active ? 'border-focus ring-1 ring-focus' : 'border-line'
+            }`}
+            style={{ backgroundColor: p.color }}
+          />
+        );
+      })}
     </div>
   );
 
@@ -258,33 +176,16 @@ export function createClassEditor(classes: string, set: (next: string) => void) 
     />
   );
 
-  return { activePreset, pickPreset, len, col, opacity, swatches, weight, radiusPresets, shadowPresets };
+  return {
+    activePreset,
+    pickPreset,
+    len,
+    lenRow,
+    col,
+    opacity,
+    swatches,
+    weight,
+    radiusPresets,
+    shadowPresets,
+  };
 }
-
-/* ---------- Collapsible sidebar section ---------- */
-
-export function Section({
-  title,
-  defaultOpen = true,
-  children,
-}: {
-  title: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <section className="border-b border-zinc-800/70">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase tracking-wider font-semibold text-zinc-500 hover:text-zinc-300 transition"
-      >
-        <span>{title}</span>
-        <span className="font-mono text-zinc-600">{open ? '−' : '+'}</span>
-      </button>
-      {open && <div className="px-3 pb-3 space-y-2.5">{children}</div>}
-    </section>
-  );
-}
-

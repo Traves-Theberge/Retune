@@ -28,14 +28,14 @@ export function Segmented({
   return (
     <div role="radiogroup" aria-label={label} className="flex bg-raised border border-line rounded p-0.5 gap-0.5">
       {options.map((o, i) => {
-        const checked = i === activeIndex;
+        const checked = o.id === active;
         return (
           <button
             key={o.id}
             type="button"
             role="radio"
             aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
+            tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onPick(o.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={`flex-1 py-0.5 rounded-[3px] text-[11px] transition outline-none focus-visible:ring-1 focus-visible:ring-focus ${

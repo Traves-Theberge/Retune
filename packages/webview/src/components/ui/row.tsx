@@ -35,7 +35,9 @@ export function Row({
         onPointerMove={
           scrubbable
             ? (e) => {
-                if (drag.current) onScrub?.(e.clientX - drag.current.x);
+                if (!drag.current) return;
+                const dx = e.clientX - drag.current.x;
+                if (dx !== 0) onScrub?.(dx);
               }
             : undefined
         }

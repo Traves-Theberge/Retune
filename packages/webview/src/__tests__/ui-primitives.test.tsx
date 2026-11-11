@@ -15,6 +15,11 @@ describe('ui primitives', () => {
     expect(out).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>B</);
     expect(out.match(/tabindex="0"/g)?.length).toBe(1);
   });
+  it('shows no selection when no option is active', () => {
+    const out = html(<Segmented onPick={() => {}} options={[{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]} />);
+    expect(out.match(/aria-checked="true"/g)?.length ?? 0).toBe(0);
+    expect(out.match(/tabindex="0"/g)?.length).toBe(1);
+  });
   it('labels icon buttons and exposes pressed state only when given', () => {
     expect(html(<IconButton icon={Undo2} label="Undo" />)).toMatch(/aria-label="Undo"[^>]*title="Undo"|title="Undo"[^>]*aria-label="Undo"/);
     expect(html(<IconButton icon={Undo2} label="Undo" />)).not.toContain('aria-pressed');

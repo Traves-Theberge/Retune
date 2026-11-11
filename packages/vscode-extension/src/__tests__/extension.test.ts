@@ -201,6 +201,10 @@ describe('retune-vscode standalone bundle & activation', () => {
     getSidebarProvider().resolveWebviewView(view, {}, {});
     await receive({ type: 'READY' });
     expect(posted.find((m) => m.type === 'SYNC_COMPONENT')).toEqual({ type: 'SYNC_COMPONENT', payload: null });
+    const problem = posted.find((m) => m.type === 'SYNC_PROBLEM');
+    expect(problem.payload.fileName).toBe('broken.tsx');
+    expect(typeof problem.payload.message).toBe('string');
+    expect(problem.payload.message.length).toBeGreaterThan(0);
     ext.deactivate();
   });
 });

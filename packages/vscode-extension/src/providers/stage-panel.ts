@@ -5,6 +5,7 @@ import {
   analyzeProps,
   listElements,
   ComponentMetadata,
+  FileProblem,
   StageState,
   StageOpenMode,
   StageTabId,
@@ -33,6 +34,7 @@ export class StagePanel {
   public static currentPanel: StagePanel | undefined;
   private static _activeDocument: vscode.TextDocument | undefined;
   private static _lastGood: { uri: string; meta: ComponentMetadata } | undefined;
+  private static _problem: FileProblem | null = null;
   private static _stageState: StageState = {
     selectedVariants: {},
     propValues: {},
@@ -70,6 +72,7 @@ export class StagePanel {
       { type: 'SYNC_COMPONENT', payload: StagePanel.getActiveMetadata() },
       except
     );
+    StagePanel.broadcast({ type: 'SYNC_PROBLEM', payload: StagePanel._problem }, except);
     StagePanel.broadcast({ type: 'SYNC_STAGE_STATE', payload: StagePanel._stageState }, except);
     StagePanel.broadcast({ type: 'SYNC_CONFIG', payload: getRetuneConfig() }, except);
   }
@@ -94,7 +97,10 @@ export class StagePanel {
       }
     }
     const doc = StagePanel._activeDocument;
-    if (!doc) return null;
+    if (!doc) {
+      StagePanel._problem = null;
+      return null;
+    }
     try {
       const text = doc.getText();
       const cvaMeta = extractCvaMetadata(text);
@@ -109,8 +115,13 @@ export class StagePanel {
         elements: listElements(text),
       };
       StagePanel._lastGood = { uri: doc.uri.toString(), meta };
+      StagePanel._problem = null;
       return meta;
-    } catch {
+    } catch (err) {
+      StagePanel._problem = {
+        fileName: path.basename(doc.fileName),
+        message: err instanceof Error ? err.message : String(err),
+      };
       // Unparsable (e.g. mid-typing): keep showing the last good analysis for this document.
       const good = StagePanel._lastGood;
       return good && good.uri === doc.uri.toString() ? good.meta : null;

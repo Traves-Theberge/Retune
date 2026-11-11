@@ -5,6 +5,14 @@ import { DEMO_META } from '../state/demo';
 const base = () => initialModel('standalone');
 
 describe('stage reducer', () => {
+  it('tracks the active file problem', () => {
+    let m = initialModel('vscode');
+    expect(m.problem).toBeNull();
+    m = reduce(m, { type: 'host', now: 1, message: { type: 'SYNC_PROBLEM', payload: { fileName: 'Button.tsx', message: 'Unexpected token (3:1)' } } });
+    expect(m.problem).toEqual({ fileName: 'Button.tsx', message: 'Unexpected token (3:1)' });
+    m = reduce(m, { type: 'host', now: 2, message: { type: 'SYNC_PROBLEM', payload: null } });
+    expect(m.problem).toBeNull();
+  });
   it('starts empty in VS Code and with the demo standalone', () => {
     expect(initialModel('vscode').meta).toBeNull();
     expect(base().meta?.componentName).toBe('Button');

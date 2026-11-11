@@ -1,5 +1,6 @@
 import type {
   ComponentMetadata,
+  FileProblem,
   HostMessage,
   RetuneExtensionConfig,
   StageState,
@@ -14,6 +15,8 @@ export interface StageModel {
   session: EditSession;
   /** True until the next SYNC_STAGE_STATE, which then starts a clean undo history. */
   pendingReset: boolean;
+  /** Set while the active file cannot be analysed (syntax error). */
+  problem: FileProblem | null;
 }
 
 export type StageAction =
@@ -34,6 +37,7 @@ export function initialModel(kind: 'vscode' | 'standalone'): StageModel {
     config: DEFAULT_CONFIG,
     session: createSession(stage.harmonicsClass),
     pendingReset: kind === 'vscode',
+    problem: null,
   };
 }
 
@@ -60,6 +64,8 @@ function reduceHost(model: StageModel, message: HostMessage, now: number): Stage
     }
     case 'SYNC_CONFIG':
       return { ...model, config: message.payload };
+    case 'SYNC_PROBLEM':
+      return { ...model, problem: message.payload };
     default:
       return model;
   }

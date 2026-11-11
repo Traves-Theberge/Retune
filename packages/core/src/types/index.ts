@@ -55,6 +55,11 @@ export interface StageState {
   activeTab: StageTabId;
 }
 
+export interface FileProblem {
+  fileName: string;
+  message: string;
+}
+
 export type WebviewMessage =
   | { type: 'READY' }
   | { type: 'MUTATE_CLASSES'; payload: { className: string } }
@@ -69,4 +74,6 @@ export type HostMessage =
   | { type: 'SYNC_COMPONENT'; payload: ComponentMetadata | null }
   | { type: 'SYNC_STAGE_STATE'; payload: StageState }
   | { type: 'SYNC_CONFIG'; payload: RetuneExtensionConfig }
+  /** The active file could not be analysed (e.g. a syntax error); null when it parses. */
+  | { type: 'SYNC_PROBLEM'; payload: FileProblem | null }
   | { type: 'MUTATION_RESULT'; payload: { ok: boolean; kind: 'classes' | 'variant'; message: string } };

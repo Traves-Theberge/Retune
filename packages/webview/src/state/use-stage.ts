@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type {
+  FileProblem,
   ComponentMetadata,
   RetuneExtensionConfig,
   StageOpenMode,
@@ -28,6 +29,8 @@ export interface StageStore {
   canUndo: boolean;
   canRedo: boolean;
   toast: ToastState | null;
+  /** The active file's analysis error, if any. Optional so test fixtures can omit it. */
+  problem?: FileProblem | null;
   targetLabel: string;
   previewClass: string;
   baselinePreviewClass: string;
@@ -204,6 +207,7 @@ export function useStage(): StageStore {
     canUndo: canUndo(session),
     canRedo: canRedo(session),
     toast,
+    problem: model.problem,
     targetLabel: targetLabel(model),
     previewClass: computePreviewClass(model),
     baselinePreviewClass: computePreviewClass(model, stage.baselineClass),

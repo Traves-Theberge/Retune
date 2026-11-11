@@ -4,7 +4,8 @@ import '@scalar/api-reference-react/style.css';
 import { Stage } from './components/stage/stage';
 import { SidebarView } from './components/sidebar/sidebar-view';
 import { StageHeader } from './components/stage-header';
-import { EmptyState, Toast } from './components/ui';
+import { Toast } from './components/ui';
+import { NoComponent, ProblemBanner } from './components/shared/file-problem';
 import { isTextField, matchShortcut } from './lib/shortcuts';
 import { useIsDark } from './hooks/use-is-dark';
 import { useStage } from './state/use-stage';
@@ -74,9 +75,14 @@ export function App() {
         <main className={`relative flex-1 overflow-hidden ${tone === 'dark' ? 'bg-stage-dark' : 'bg-stage-light'}`}>
           {stage.activeTab === 'stage' &&
             (meta ? (
-              <Stage store={store} tone={tone} comparing={comparing} />
+              <div className="flex h-full flex-col">
+                <ProblemBanner problem={store.problem} />
+                <div className="relative min-h-0 flex-1">
+                  <Stage store={store} tone={tone} comparing={comparing} />
+                </div>
+              </div>
             ) : (
-              <EmptyState title="No component selected" hint="Open a .tsx or .jsx file to start tuning." />
+              <NoComponent problem={store.problem} />
             ))}
 
           {stage.activeTab === 'ast' && (

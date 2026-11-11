@@ -3,7 +3,8 @@ import type { StageOpenMode } from '@retune/core';
 import type { StageStore } from '../../state/use-stage';
 import { splitClasses } from '../../lib/arbitrary-style';
 import { BG_TOKENS, GAP, HEIGHT, PX, PY, RADIUS, TEXT_SIZE, createClassEditor } from '../controls';
-import { Button, EmptyState, Row, Section, Segmented, fieldClass } from '../ui';
+import { Button, Row, Section, Segmented, fieldClass } from '../ui';
+import { NoComponent, ProblemBanner } from '../shared/file-problem';
 import { ClassChips } from '../shared/class-chips';
 import { ElementList } from '../shared/element-list';
 import { VariantPicker } from '../shared/variant-picker';
@@ -61,9 +62,10 @@ export function SidebarView({ store, embedded }: { store: StageStore; embedded?:
 
       <div className="flex-1 overflow-y-auto">
         {!meta ? (
-          <EmptyState title="No component selected" hint="Open a .tsx or .jsx file to start tuning." />
+          <NoComponent problem={store.problem} />
         ) : (
           <>
+            <ProblemBanner problem={store.problem} />
             <Section title="Element">
               <ElementList
                 elements={meta.elements ?? []}

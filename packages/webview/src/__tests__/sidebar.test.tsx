@@ -35,6 +35,17 @@ describe('SidebarView', () => {
     const plain = html(<SidebarView store={store({ meta: { ...DEMO_META, cva: { ...DEMO_META.cva, hasCva: false, variants: {} } } })} />);
     expect(plain).not.toContain('>Variants<');
   });
+  it('names the file and the syntax error when the active file does not parse', () => {
+    const problem = { fileName: 'Button.tsx', message: 'Expected corresponding JSX closing tag for <buttonP>. (41:4)' };
+    const empty = html(<SidebarView store={store({ meta: null, problem })} />);
+    expect(empty).toContain('Can&#x27;t read Button.tsx');
+    expect(empty).toContain('Expected corresponding JSX closing tag');
+    expect(empty).not.toContain('No component selected');
+    const stale = html(<SidebarView store={store({ problem })} />);
+    expect(stale).toContain('role="alert"');
+    expect(stale).toContain('showing the last version that parsed');
+    expect(html(<SidebarView store={store()} />)).not.toContain('role="alert"');
+  });
   it('uses only token colours', () => {
     const out = html(<SidebarView store={store({ dirty: true })} />).replace(/placeholder="[^"]*"/g, '').replace(/style="[^"]*"/g, '').replace(/value="[^"]*"/g, '');
     expect(out).not.toMatch(/zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-f]{6}/i);

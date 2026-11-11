@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Targeted edits**: Edits go to the selected element (the Nth JSX element with an exact name) or to the component root (the `cva()` base classes when present). Class changes are written as a minimal text edit.
+- **Real sync results**: Sync reports success or a specific failure (for example `No <span> element found`) from the host. Syncing with nothing changed reports `Already up to date`.
+- **Undo/redo**: Per-webview history (100 steps). Changes within 400 ms coalesce into one step. Shortcuts `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y`.
+- **Single Sync**: One primary Sync button (`Ctrl/Cmd+S`), enabled only when the classes are dirty. The host tracks the dirty state.
+- **Element list**: The sidebar lists the component root and every JSX element. Selecting one makes it the edit target and reveals its line in the editor.
+- **Selection stage**: Hover, click and double-click selection on the canvas, a selection toolbar, and a clamped 280px edit popover. `Esc` closes the innermost layer.
+- **Empty state**: With no active component, the webview shows `No component selected` instead of demo data. The demo Button is used only in the standalone browser.
+- **Accessible controls**: Visible focus rings, `aria-label` and `title` on icon-only buttons, `lucide-react` icons at 14px, and scrubbable numeric controls with keyboard nudging.
+
+### Changed
+- **Theme tokens**: All UI colours come from `--rt-*` tokens mapped to `--vscode-*` variables, so the stage and sidebar follow the host theme.
+- **Content Security Policy and offline Tailwind**: The webview has a nonce-based CSP. `@tailwindcss/browser` is bundled, so arbitrary classes render offline and the CDN script is removed.
+- **Approximate preview**: The stage is labelled as an approximate, classes-only preview.
+
+### Removed
+- Protocol messages `SWITCH_TAB`, `THEME_CHANGED` and `MUTATION_SUCCESS`. `MUTATE_CLASSES` no longer carries `componentName`.
+
 ## [1.0.0] - 2026-11-09
 
 ### Added

@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 
 /**
- * Tailwind arbitrary values (e.g. `px-[14px]`, `bg-[#4f46e5]`) are generated at runtime by the
+ * Tailwind arbitrary values (e.g. `px-[14px]`, `bg-[rgb(79_70_229)]`) are generated at runtime by the
  * Retune inspector, but the webview's compiled CSS can't contain them. The class string stays
  * the single source of truth: we parse arbitrary classes and mirror them as inline styles in
  * the preview, and write the real Tailwind class into the source file on sync.

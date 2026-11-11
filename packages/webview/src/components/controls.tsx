@@ -1,9 +1,7 @@
 import { useRef } from 'react';
 import { getArbitrary, setArbitrary, splitClasses } from '../lib/arbitrary-style';
 import { scrubValue } from '../lib/scrub';
-import { ColorField, Row, ScrubInput, Segmented, Section, fieldClass } from './ui';
-
-export { ColorField, Row, Section, Segmented };
+import { ColorField, Row, ScrubInput, Segmented, Section } from './ui';
 
 /* ---------- Token presets shared by the sidebar, modals and context menu ---------- */
 
@@ -27,12 +25,6 @@ export const BG_PRESETS = [
   { token: 'bg-transparent', name: 'Transparent', color: 'transparent' },
 ];
 export const BG_TOKENS = BG_PRESETS.map((p) => p.token);
-
-/** Kept for existing callers; the shared field style lives in `ui`. */
-export const field = fieldClass;
-
-/** Numeric control; kept as the name existing callers use. */
-export const Slider = ScrubInput;
 
 /* ---------- Scrubbable length row ---------- */
 

@@ -7,7 +7,7 @@
 [![Turborepo](https://img.shields.io/badge/Monorepo-Turborepo%20%2B%20pnpm-EF4444.svg)](https://turbo.build/)
 [![MCP Ready](https://img.shields.io/badge/MCP-Stdio%20Server-10B981.svg)](https://modelcontextprotocol.io/)
 
-**Retune** bridges the gap between React UI code (`shadcn/ui`, `class-variance-authority`, Tailwind CSS) and live visual iteration directly inside VS Code's **Editor Tab System** and **Primary Sidebar**. Every visual adjustment—whether toggling CVA variants, tweaking component props, or fine-tuning Tailwind utility tokens in the **Harmonics Bar**—is written back to your `.tsx` source code using format-preserving AST mutations (`recast` + `@babel/parser`) that never strip your comments or formatting.
+**Retune** bridges the gap between React UI code (`shadcn/ui`, `class-variance-authority`, Tailwind CSS) and live visual iteration directly inside VS Code's **Editor Tab System** and **Primary Sidebar**. Every visual adjustment—whether toggling CVA variants, tweaking component props, or fine-tuning Tailwind utility tokens in the Stage's **selection toolbar** and **edit popover**—is written back to your `.tsx` source code using format-preserving AST mutations (`recast` + `@babel/parser`) that never strip your comments or formatting.
 
 ---
 
@@ -16,7 +16,11 @@
 ### 1. Native VS Code Editor Tab & Split Stage (`The Stage`)
 - **Editor Tab System Integration**: Launch Retune directly from the editor tab title bar (`$(symbol-color)`), CodeLens above `cva(...)` definitions, or `Ctrl+Shift+R` (`Cmd+Shift+R` on macOS).
 - **Multi-Tab Workspace**:
-  - **The Stage**: Interactive canvas with fluid/preset viewports (`Responsive`, `Mobile 375px`, `Tablet 768px`, `Desktop 1024px`), dot-grid alignment overlay, **Tone Matrix** bar, and **Harmonics Bar** with one-click Tailwind token pills.
+  - **The Stage**: Interactive canvas with fluid/preset viewports (`Responsive`, `Mobile 375px`, `Tablet 768px`, `Desktop 1024px`) and a dot-grid alignment overlay. The one-row header holds the target label (with a dirty dot), Undo, Redo, Compare, Discard, a single **Sync** button, viewport, grid and canvas tone (light/dark) controls.
+  - **Targeted edits**: Edits go to the element you select, or to the component root when nothing is selected. The root is the `cva()` base classes when the file has one. Sync writes a minimal text edit to that element and reports the real result.
+  - **Select, then edit**: Hover outlines an element; click selects it (tag chip and `W × H` badge); double-click opens its Text panel. A floating selection toolbar offers Text, Fill, Type, Space, Shape, Variants and Classes. Each opens a 280px edit popover that stays inside the stage and flips above the element when there is no room below.
+  - **Approximate preview**: The canvas applies the classes to a stand-in tag, not the real rendered component. A caption under the canvas reads `Approximate preview — classes only`.
+  - **Shortcuts**: `Ctrl/Cmd+S` sync, `Ctrl/Cmd+Z` undo, `Ctrl/Cmd+Shift+Z` (or `Ctrl/Cmd+Y`) redo. `Esc` closes the innermost layer: context menu, then popover, then selection. Undo and redo stay with the browser while focus is in a text field.
   - **AST & Props Inspector**: Real-time breakdown of extracted `cva` variant groups, `defaultVariants`, TypeScript `*Props` interfaces, and live `.tsx` source.
   - **Scalar API Console**: Embedded `@scalar/api-reference-react` interactive OpenAPI 3.1 console connected to the local Retune HTTP daemon.
 
@@ -24,7 +28,8 @@
 - **Params & Tone Tab**:
   - Inspect and switch active **CVA Variants** (`variant`, `size`, `intent`, etc.) and commit any option as the new `defaultVariants` in your `.tsx` AST.
   - Live **Component Props** controls generated automatically from your TypeScript `interface *Props` definitions (`string`, `boolean`, `number`).
-  - **Harmonics Quick-Tuner** for rapid Tailwind utility editing.
+  - **Element list**: The component root plus every JSX element, with its name, line number and class count. Selecting one makes it the edit target and reveals its line in the editor.
+  - **Class editing** in sections (Element, Content, Variants, Layout, Typography, Appearance, Classes, Workspace). Numeric controls scrub by dragging the row label; in the number field `↑/↓` nudge one step, `Shift` ×10, `Alt` ×0.1.
 - **Configuration Tab**:
   - Real-time synchronization with VS Code settings (`retune.stage.openMode`, `retune.stage.defaultViewport`, `retune.stage.showGrid`, `retune.autoSyncActiveEditor`, `retune.daemon.port`, `retune.scalar.layout`).
 

@@ -57,19 +57,16 @@ export interface StageState {
 
 export type WebviewMessage =
   | { type: 'READY' }
-  | { type: 'MUTATE_CLASSES'; payload: { className: string; componentName?: string } }
+  | { type: 'MUTATE_CLASSES'; payload: { className: string } }
   | { type: 'SELECT_ELEMENT'; payload: { name: string; index: number } | null }
   | { type: 'MUTATE_VARIANT'; payload: { variantGroup: string; variantValue: string } }
   | { type: 'UPDATE_PROP_VALUE'; payload: { propName: string; value: string | boolean | number } }
   | { type: 'UPDATE_STAGE_STATE'; payload: Partial<StageState> }
   | { type: 'UPDATE_CONFIG'; payload: Partial<RetuneExtensionConfig> }
-  | { type: 'OPEN_STAGE_TAB'; payload?: { openMode?: StageOpenMode; tab?: StageTabId } }
-  | { type: 'SWITCH_TAB'; payload: { tab: StageTabId } };
+  | { type: 'OPEN_STAGE_TAB'; payload?: { openMode?: StageOpenMode; tab?: StageTabId } };
 
 export type HostMessage =
   | { type: 'SYNC_COMPONENT'; payload: ComponentMetadata | null }
   | { type: 'SYNC_STAGE_STATE'; payload: StageState }
   | { type: 'SYNC_CONFIG'; payload: RetuneExtensionConfig }
-  | { type: 'THEME_CHANGED'; payload: { isDark: boolean; highContrast: boolean } }
-  | { type: 'MUTATION_SUCCESS'; payload: { updatedCode: string } }
   | { type: 'MUTATION_RESULT'; payload: { ok: boolean; kind: 'classes' | 'variant'; message: string } };

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
   extractCvaMetadata,
-  extractElementClassName,
   analyzeProps,
   listElements,
   ComponentMetadata,
@@ -21,6 +20,7 @@ import {
   planVariantMutation,
   reconcile,
   resolveTarget,
+  sameTargetRef,
   type MutationPlan,
   type TargetRef,
 } from '../state/stage-state';
@@ -32,6 +32,7 @@ const sinks = new Map<SinkId, (msg: HostMessage) => void>();
 export class StagePanel {
   public static currentPanel: StagePanel | undefined;
   private static _activeDocument: vscode.TextDocument | undefined;
+  private static _lastGood: { uri: string; meta: ComponentMetadata } | undefined;
   private static _stageState: StageState = {
     selectedVariants: {},
     propValues: {},
@@ -94,18 +95,26 @@ export class StagePanel {
     }
     const doc = StagePanel._activeDocument;
     if (!doc) return null;
-    const text = doc.getText();
-    const cvaMeta = extractCvaMetadata(text);
-    const props = analyzeProps(text);
-    const componentName = path.basename(doc.fileName, path.extname(doc.fileName));
-    return {
-      componentName,
-      filePath: doc.fileName,
-      cva: cvaMeta,
-      props,
-      rawSource: text,
-      elements: listElements(text),
-    };
+    try {
+      const text = doc.getText();
+      const cvaMeta = extractCvaMetadata(text);
+      const props = analyzeProps(text);
+      const componentName = path.basename(doc.fileName, path.extname(doc.fileName));
+      const meta: ComponentMetadata = {
+        componentName,
+        filePath: doc.fileName,
+        cva: cvaMeta,
+        props,
+        rawSource: text,
+        elements: listElements(text),
+      };
+      StagePanel._lastGood = { uri: doc.uri.toString(), meta };
+      return meta;
+    } catch {
+      // Unparsable (e.g. mid-typing): keep showing the last good analysis for this document.
+      const good = StagePanel._lastGood;
+      return good && good.uri === doc.uri.toString() ? good.meta : null;
+    }
   }
 
   public static render(
@@ -276,7 +285,6 @@ export class StagePanel {
         StagePanel._stageState = {
           ...StagePanel._stageState,
           baselineClass: className,
-          harmonicsClass: className,
         };
       }
       StagePanel.broadcast({ type: 'MUTATION_RESULT', payload: { ...result, kind: 'classes' } });
@@ -297,13 +305,17 @@ export class StagePanel {
   }
 
   private static _setTarget(target: TargetRef, meta: ComponentMetadata) {
+    const current: TargetRef = {
+      targetElement: StagePanel._stageState.targetElement,
+      targetIndex: StagePanel._stageState.targetIndex,
+    };
     const base: StageState = { ...StagePanel._stageState };
     delete base.targetElement;
     delete base.targetIndex;
     StagePanel._stageState = reconcile(
       { ...base, ...target },
       fileClassFor(meta.cva, meta.elements ?? [], target),
-      true
+      !sameTargetRef(current, target)
     );
   }
 

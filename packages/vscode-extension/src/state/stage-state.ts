@@ -28,6 +28,10 @@ export function resolveTarget(elements: ElementInfo[], name?: string, index = 0)
   return elements.filter((el) => el.name === name)[index];
 }
 
+export function sameTargetRef(a: TargetRef, b: TargetRef): boolean {
+  return a.targetElement === b.targetElement && (a.targetIndex ?? 0) === (b.targetIndex ?? 0);
+}
+
 /** Returns {} when name is missing or matches nothing; otherwise { targetElement: name, targetIndex } with index clamped to the last match. */
 export function normalizeTarget(elements: ElementInfo[], name?: string, index?: number): TargetRef {
   if (!name) return {};

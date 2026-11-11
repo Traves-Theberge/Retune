@@ -181,4 +181,26 @@ describe('retune-vscode standalone bundle & activation', () => {
     warn.mockRestore();
     ext.deactivate();
   });
+
+  it('survives an unparsable active file: activate does not throw and READY syncs null', async () => {
+    const { ext, mockVscode, getSidebarProvider } = loadExtension();
+    const uri = { toString: () => 'file:///broken.tsx', fsPath: '/broken.tsx' };
+    (mockVscode.window as any).activeTextEditor = {
+      document: { fileName: '/broken.tsx', uri, getText: () => 'export const A = () => <div className="a"' },
+    };
+    expect(() =>
+      ext.activate({ extensionUri: mockVscode.Uri.file(path.resolve(__dirname, '..', '..')), subscriptions: [] })
+    ).not.toThrow();
+    const posted: any[] = [];
+    let receive: (m: any) => unknown = () => {};
+    const view = { webview: {
+      options: {}, html: '', cspSource: 'vscode-resource:', asWebviewUri: (u: any) => u.fsPath,
+      onDidReceiveMessage: (fn: any) => { receive = fn; return { dispose() {} }; },
+      postMessage: async (m: any) => { posted.push(m); return true; },
+    }, onDidDispose: () => ({ dispose() {} }) };
+    getSidebarProvider().resolveWebviewView(view, {}, {});
+    await receive({ type: 'READY' });
+    expect(posted.find((m) => m.type === 'SYNC_COMPONENT')).toEqual({ type: 'SYNC_COMPONENT', payload: null });
+    ext.deactivate();
+  });
 });

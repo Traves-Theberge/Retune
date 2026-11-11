@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyEdits, extractCvaMetadata, listElements, type StageState } from '@retune/core';
-import { fileClassFor, normalizeTarget, planClassMutation, planVariantMutation, reconcile, resolveTarget } from '../state/stage-state';
+import { fileClassFor, normalizeTarget, planClassMutation, planVariantMutation, reconcile, resolveTarget, sameTargetRef } from '../state/stage-state';
 
 const SRC = `const b = cva('base-a', { variants: {}, defaultVariants: { size: 'sm' } });
 export const A = () => (
@@ -74,5 +74,17 @@ describe('planVariantMutation', () => {
     expect(applyEdits(SRC, (plan as any).edit)).toContain("size: 'lg'");
     expect(planVariantMutation(PLAIN, 'size', 'lg')).toEqual({ ok: false, message: 'No defaultVariants block found' });
     expect(planVariantMutation(SRC, 'size', 'sm')).toEqual({ ok: true, edit: null, message: 'Already up to date' });
+  });
+});
+
+describe('sameTargetRef', () => {
+  it('treats a missing index as 0', () => {
+    expect(sameTargetRef({}, {})).toBe(true);
+    expect(sameTargetRef({ targetElement: 'span' }, { targetElement: 'span', targetIndex: 0 })).toBe(true);
+  });
+  it('differs by name or index', () => {
+    expect(sameTargetRef({ targetElement: 'span' }, { targetElement: 'div' })).toBe(false);
+    expect(sameTargetRef({ targetElement: 'span', targetIndex: 1 }, { targetElement: 'span', targetIndex: 0 })).toBe(false);
+    expect(sameTargetRef({}, { targetElement: 'span' })).toBe(false);
   });
 });

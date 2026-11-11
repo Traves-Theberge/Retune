@@ -1,4 +1,8 @@
+/* The bundled Scalar API console ships global, unlayered CSS. Unlayered rules beat every Tailwind
+   layer, so it is imported into its own cascade layer: above the reset, below our utilities. */
+@layer theme, base, scalar, components, utilities;
 @import "tailwindcss";
+@import "@scalar/api-reference-react/style.css" layer(scalar);
 
 /* Safelist interactive component tuning tokens so live class manipulation works 100% offline in VS Code Webviews */
 @source inline("{px-0,px-1,px-2,px-2.5,px-3,px-4,px-5,px-6,px-8,px-10}");
@@ -44,6 +48,9 @@
   /* Stage backdrop tones: fixed, independent of the host theme. */
   --rt-stage-dark: #09090b;
   --rt-stage-light: #f4f4f5;
+  /* The preview frame sitting on the backdrop. */
+  --rt-frame-dark: #121216;
+  --rt-frame-light: #ffffff;
 }
 
 body.vscode-light {
@@ -71,6 +78,8 @@ body.vscode-light {
   --color-warn: var(--rt-warn);
   --color-stage-dark: var(--rt-stage-dark);
   --color-stage-light: var(--rt-stage-light);
+  --color-frame-dark: var(--rt-frame-dark);
+  --color-frame-light: var(--rt-frame-light);
   --font-sans: var(--rt-font);
   --font-mono: var(--rt-mono);
 }

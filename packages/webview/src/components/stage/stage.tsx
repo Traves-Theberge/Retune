@@ -8,14 +8,18 @@ import { VIEWPORTS } from '../shared/viewports';
 import { EditPanel, PANELS, availablePanels, type PanelKind } from './edit-panels';
 import { SelectionToolbar } from './selection-toolbar';
 import { ContextMenu, buildMenu } from './context-menu';
+import { CanvasDock } from './canvas-dock';
 
+/** Dot grid that fades out towards the edges so the frame, not the grid, holds the eye. */
 const GRID_STYLE = {
-  backgroundImage: 'radial-gradient(color-mix(in srgb, var(--rt-muted) 25%, transparent) 1px, transparent 1px)',
-  backgroundSize: '16px 16px',
+  backgroundImage: 'radial-gradient(color-mix(in srgb, var(--rt-muted) 32%, transparent) 1px, transparent 1px)',
+  backgroundSize: '20px 20px',
+  maskImage: 'radial-gradient(ellipse at center, black 35%, transparent 80%)',
+  WebkitMaskImage: 'radial-gradient(ellipse at center, black 35%, transparent 80%)',
 };
 
 /** Space kept above and below the element for the tag chip and the W x H badge. */
-const CHIP_CLEARANCE = 24;
+const CHIP_CLEARANCE = 32;
 const TOOLBAR_PER_BUTTON = 72;
 const TOOLBAR_PADDING = 12;
 const TOOLBAR_HEIGHT = 32;
@@ -28,7 +32,17 @@ function sameSize(a: Size | null, b: Size): boolean {
   return !!a && a.width === b.width && a.height === b.height;
 }
 
-export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'dark' | 'light'; comparing: boolean }) {
+export function Stage({
+  store,
+  tone,
+  comparing,
+  onToggleTone,
+}: {
+  store: StageStore;
+  tone: 'dark' | 'light';
+  comparing: boolean;
+  onToggleTone: () => void;
+}) {
   const { stage, meta } = store;
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -107,7 +121,9 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
   const panels = availablePanels(hasVariants);
   const panelTitle = PANELS.find((p) => p.kind === panel)?.title ?? '';
   const tagChip = `<${tagName}>`;
-  const frameWidth = (VIEWPORTS.find((v) => v.id === stage.viewport) ?? VIEWPORTS[0]).widthClass;
+  const viewportPreset = VIEWPORTS.find((v) => v.id === stage.viewport) ?? VIEWPORTS[0];
+  const frameWidth = viewportPreset.id === 'responsive' ? viewportPreset.widthClass : `${viewportPreset.widthClass} max-w-full`;
+  const widthLabel = viewportPreset.id === 'responsive' ? 'Fluid' : `${viewportPreset.label}px`;
 
   // Until the toolbar has been measured, fall back to a width estimate from the panel count.
   const toolbarSize = toolbarMeasured ?? {
@@ -143,14 +159,28 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         e.preventDefault();
       }}
-      className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden p-6 transition-colors ${
+      className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-6 pt-6 pb-16 transition-colors ${
         tone === 'light' ? 'bg-stage-light' : 'bg-stage-dark'
       }`}
-      style={stage.showGrid ? GRID_STYLE : undefined}
     >
+      {stage.showGrid && <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={GRID_STYLE} />}
+
+      <div
+        aria-hidden="true"
+        className={`relative mb-2 flex items-center gap-2 font-mono text-[11px] transition-all duration-150 ${frameWidth} ${
+          tone === 'light' ? 'text-frame-dark/50' : 'text-muted'
+        }`}
+      >
+        <span className="h-px flex-1 bg-current opacity-25" />
+        <span>{widthLabel}</span>
+        <span className="h-px flex-1 bg-current opacity-25" />
+      </div>
+
       <div
         ref={frameRef}
-        className={`flex min-h-[260px] items-center justify-center rounded border border-line bg-panel/60 p-14 transition-all duration-150 ${frameWidth}`}
+        className={`relative flex min-h-[280px] items-center justify-center rounded-2xl border p-14 shadow-2xl transition-all duration-150 ${frameWidth} ${
+          tone === 'light' ? 'border-frame-dark/10 bg-frame-light' : 'border-line bg-frame-dark'
+        }`}
       >
         <div
           ref={elementRef}
@@ -171,8 +201,8 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
             setSelected(true);
             setMenu({ x: e.clientX, y: e.clientY });
           }}
-          className={`relative cursor-pointer rounded outline-offset-4 ${
-            selected ? 'outline outline-2 outline-accent' : 'hover:outline hover:outline-1 hover:outline-accent/50'
+          className={`relative cursor-pointer rounded-md outline-offset-4 ${
+            selected ? 'outline outline-2 outline-accent' : 'hover:outline hover:outline-1 hover:outline-accent/60'
           }`}
         >
           <Tag
@@ -183,21 +213,23 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
           </Tag>
         </div>
       </div>
-      <p className="mt-3 text-[11px] text-subtle">Approximate preview — classes only</p>
+      <p className={`relative mt-3 text-[11px] ${tone === 'light' ? 'text-frame-dark/50' : 'text-subtle'}`}>
+        Approximate preview — classes only
+      </p>
 
       {selected && anchor && (
         <>
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute z-10 rounded bg-overlay px-1 font-mono text-[11px] text-accent"
-            style={{ left: anchor.left, top: Math.max(0, anchor.top - 22) }}
+            className="pointer-events-none absolute z-10 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm"
+            style={{ left: anchor.left - 4, top: Math.max(0, anchor.top - 28) }}
           >
             {tagChip}
           </span>
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute z-10 rounded bg-overlay px-1 font-mono text-[11px] text-muted"
-            style={{ left: anchor.left, top: anchor.top + anchor.height + 6 }}
+            className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm"
+            style={{ left: anchor.left + anchor.width / 2, top: anchor.top + anchor.height + 10 }}
           >
             {`${Math.round(anchor.width)} × ${Math.round(anchor.height)}`}
           </span>
@@ -225,6 +257,15 @@ export function Stage({ store, tone, comparing }: { store: StageStore; tone: 'da
           <EditPanel kind={panel} store={store} onDone={() => setPanel(null)} />
         </Popover>
       )}
+
+      <CanvasDock
+        viewport={stage.viewport}
+        onViewport={(viewport) => store.patchStage({ viewport })}
+        showGrid={stage.showGrid}
+        onToggleGrid={() => store.patchStage({ showGrid: !stage.showGrid })}
+        tone={tone}
+        onToggleTone={onToggleTone}
+      />
 
       {menu && (
         <ContextMenu

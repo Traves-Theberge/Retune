@@ -57,10 +57,13 @@ describe('stage pieces', () => {
     expect(out).toMatch(/aria-disabled="true"[^>]*>(<[^>]+>)*Beta/); expect(out).toContain('Ctrl+S');
   });
   it('renders the preview with current or baseline classes and the caption', () => {
-    const live = html(<Stage store={store()} tone="dark" comparing={false} />);
+    const live = html(<Stage store={store()} tone="dark" comparing={false} onToggleTone={noop} />);
     expect(live).toContain('px-4 current'); expect(live).toContain('Approximate preview — classes only');
     expect(live).not.toMatch(/>Sync/);
-    expect(html(<Stage store={store()} tone="light" comparing />)).toContain('px-2 baseline');
-    expect(html(<Stage store={store({ stage: { ...DEFAULT_STAGE_STATE, targetElement: 'span' } })} tone="dark" comparing={false} />)).toMatch(/<span[^>]*px-4 current/);
+    expect(live).toMatch(/role="radiogroup" aria-label="Viewport"/);
+    expect(live).toMatch(/aria-checked="true"[^>]*title="Fluid width"/);
+    expect(live).toContain('aria-label="Canvas tone"');
+    expect(html(<Stage store={store()} tone="light" comparing onToggleTone={noop} />)).toContain('px-2 baseline');
+    expect(html(<Stage store={store({ stage: { ...DEFAULT_STAGE_STATE, targetElement: 'span' } })} tone="dark" comparing={false} onToggleTone={noop} />)).toMatch(/<span[^>]*px-4 current/);
   });
 });

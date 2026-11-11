@@ -12,7 +12,7 @@ const store = (over: Partial<StageStore> = {}): StageStore => ({
   setClasses: noop, undo: noop, redo: noop, discard: noop, sync: noop, selectVariant: noop, commitVariant: noop, setProp: noop,
   patchStage: noop, patchConfig: noop, selectElement: noop, openStage: noop, notify: noop, ...over,
 });
-const render = (s: StageStore) => renderToStaticMarkup(<StageHeader store={s} tone="dark" onToggleTone={noop} onCompare={noop} />);
+const render = (s: StageStore) => renderToStaticMarkup(<StageHeader store={s} onCompare={noop} />);
 
 describe('StageHeader', () => {
   it('has exactly one Sync, disabled while clean', () => {
@@ -29,9 +29,10 @@ describe('StageHeader', () => {
     expect(out).toMatch(/aria-label="Undo"/); expect(out).toMatch(/aria-label="Redo"[^>]*disabled=""|disabled=""[^>]*aria-label="Redo"/);
   });
   it('offers the three views and hides edit actions off the stage tab', () => {
-    expect(render(store())).toMatch(/aria-checked="true"[^>]*>Stage</);
+    expect(render(store())).toMatch(/aria-checked="true"[^>]*>(?:<svg[\s\S]*?<\/svg>)?<span>Stage</);
+    expect(render(store())).toContain('Button.tsx');
     const out = render(store({ stage: { ...DEFAULT_STAGE_STATE, activeTab: 'ast' } }));
-    expect(out).toMatch(/aria-checked="true"[^>]*>Code</); expect(out).not.toContain('>Sync<'); expect(out).not.toContain('aria-label="Undo"');
+    expect(out).toMatch(/aria-checked="true"[^>]*>(?:<svg[\s\S]*?<\/svg>)?<span>Code</); expect(out).not.toContain('>Sync<'); expect(out).not.toContain('aria-label="Undo"');
   });
   it('uses only token colours', () => {
     expect(render(store({ dirty: true }))).not.toMatch(/zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-f]{6}/i);

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { ApiReferenceReact } from '@scalar/api-reference-react';
-import '@scalar/api-reference-react/style.css';
 import { Stage } from './components/stage/stage';
 import { SidebarView } from './components/sidebar/sidebar-view';
 import { StageHeader } from './components/stage-header';
@@ -65,12 +64,7 @@ export function App() {
       )}
 
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-        <StageHeader
-          store={store}
-          tone={tone}
-          onToggleTone={() => setTone((t) => (t === 'dark' ? 'light' : 'dark'))}
-          onCompare={setComparing}
-        />
+        <StageHeader store={store} onCompare={setComparing} />
 
         <main className={`relative flex-1 overflow-hidden ${tone === 'dark' ? 'bg-stage-dark' : 'bg-stage-light'}`}>
           {stage.activeTab === 'stage' &&
@@ -78,7 +72,12 @@ export function App() {
               <div className="flex h-full flex-col">
                 <ProblemBanner problem={store.problem} />
                 <div className="relative min-h-0 flex-1">
-                  <Stage store={store} tone={tone} comparing={comparing} />
+                  <Stage
+                    store={store}
+                    tone={tone}
+                    comparing={comparing}
+                    onToggleTone={() => setTone((t) => (t === 'dark' ? 'light' : 'dark'))}
+                  />
                 </div>
               </div>
             ) : (

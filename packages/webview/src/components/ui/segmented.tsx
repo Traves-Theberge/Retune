@@ -38,7 +38,7 @@ export function Segmented({
             tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onPick(o.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`flex-1 py-0.5 rounded-[3px] text-[11px] transition outline-none focus-visible:ring-1 focus-visible:ring-focus ${
+            className={`flex-1 px-1.5 py-0.5 rounded-[3px] text-[11px] transition outline-none focus-visible:ring-1 focus-visible:ring-focus ${
               checked ? 'bg-active text-active-fg' : 'text-muted hover:text-fg hover:bg-hover'
             }`}
           >

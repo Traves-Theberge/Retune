@@ -12,6 +12,8 @@ export interface StageModel {
   stage: StageState;
   config: RetuneExtensionConfig;
   session: EditSession;
+  /** True until the next SYNC_STAGE_STATE, which then starts a clean undo history. */
+  pendingReset: boolean;
 }
 
 export type StageAction =
@@ -31,6 +33,7 @@ export function initialModel(kind: 'vscode' | 'standalone'): StageModel {
     stage,
     config: DEFAULT_CONFIG,
     session: createSession(stage.harmonicsClass),
+    pendingReset: kind === 'vscode',
   };
 }
 
@@ -44,14 +47,16 @@ function reduceHost(model: StageModel, message: HostMessage, now: number): Stage
         ...model,
         meta: next,
         session: changed ? createSession(model.stage.harmonicsClass) : model.session,
+        pendingReset: changed ? true : model.pendingReset,
       };
     }
     case 'SYNC_STAGE_STATE': {
       const next = message.payload;
-      const session = sameTarget(model.stage, next)
-        ? applyChange(model.session, next.harmonicsClass, now)
-        : createSession(next.harmonicsClass);
-      return { ...model, stage: next, session };
+      const session =
+        !model.pendingReset && sameTarget(model.stage, next)
+          ? applyChange(model.session, next.harmonicsClass, now)
+          : createSession(next.harmonicsClass);
+      return { ...model, stage: next, session, pendingReset: false };
     }
     case 'SYNC_CONFIG':
       return { ...model, config: message.payload };

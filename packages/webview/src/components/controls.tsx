@@ -55,7 +55,7 @@ export function LengthRow({
       }}
       onScrub={(dx) => onChange(`${scrubValue(start.current, dx, step, min, max)}px`)}
     >
-      <ScrubInput value={value} min={min} max={max} step={step} onChange={onChange} onClear={onClear} />
+      <ScrubInput label={label} value={value} min={min} max={max} step={step} onChange={onChange} onClear={onClear} />
     </Row>
   );
 }

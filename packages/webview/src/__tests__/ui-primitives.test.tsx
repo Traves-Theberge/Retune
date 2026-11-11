@@ -15,6 +15,11 @@ describe('ui primitives', () => {
     expect(out).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>B</);
     expect(out.match(/tabindex="0"/g)?.length).toBe(1);
   });
+  it('names the scrub inputs', () => {
+    const out = html(<ScrubInput label="pad X" value="14px" min={0} max={64} onChange={() => {}} onClear={() => {}} />);
+    expect(out).toContain('aria-label="pad X"');
+    expect(out).toContain('aria-label="pad X value"');
+  });
   it('shows no selection when no option is active', () => {
     const out = html(<Segmented onPick={() => {}} options={[{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]} />);
     expect(out.match(/aria-checked="true"/g)?.length ?? 0).toBe(0);

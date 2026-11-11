@@ -37,4 +37,16 @@ describe('stage reducer', () => {
     expect(targetLabel({ ...m, stage: { ...m.stage, targetElement: 'span' } })).toBe('<span>');
     expect(targetLabel(initialModel('vscode'))).toBe('Component');
   });
+  it('starts a clean undo history on first load and on a file switch', () => {
+    const host = (message: any, now: number) => ({ type: 'host' as const, message, now });
+    let m = initialModel('vscode');
+    m = reduce(m, host({ type: 'SYNC_COMPONENT', payload: DEMO_META }, 1));
+    m = reduce(m, host({ type: 'SYNC_STAGE_STATE', payload: { ...m.stage, harmonicsClass: 'a', baselineClass: 'a' } }, 2));
+    expect(m.session.past).toEqual([]);
+    expect(m.session.present).toBe('a');
+    m = reduce(m, host({ type: 'SYNC_COMPONENT', payload: { ...DEMO_META, filePath: 'b.tsx' } }, 3000));
+    m = reduce(m, host({ type: 'SYNC_STAGE_STATE', payload: { ...m.stage, harmonicsClass: 'b', baselineClass: 'b' } }, 3001));
+    expect(m.session.past).toEqual([]);
+    expect(m.session.present).toBe('b');
+  });
 });

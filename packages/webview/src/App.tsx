@@ -5,7 +5,7 @@ import { Stage } from './components/stage/stage';
 import { SidebarView } from './components/sidebar/sidebar-view';
 import { StageHeader } from './components/stage-header';
 import { EmptyState, Toast } from './components/ui';
-import { matchShortcut } from './lib/shortcuts';
+import { isTextField, matchShortcut } from './lib/shortcuts';
 import { useIsDark } from './hooks/use-is-dark';
 import { useStage } from './state/use-stage';
 
@@ -32,18 +32,19 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const inTextField =
-        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || Boolean(target?.isContentEditable);
+      const inTextField = isTextField(target as { tagName?: string; type?: string; isContentEditable?: boolean } | null);
       const action = matchShortcut(e, inTextField);
       if (!action) return;
       e.preventDefault();
-      if (action === 'sync') sync();
+      if (action === 'sync') {
+        if (store.dirty) sync();
+      }
       else if (action === 'undo') undo();
       else redo();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [sync, undo, redo]);
+  }, [sync, undo, redo, store.dirty]);
 
   if (isSidebarMode()) {
     return (

@@ -163,7 +163,7 @@ export function ContextMenu({
       onKeyDown={onKeyDown}
       onClick={(e) => e.stopPropagation()}
       style={{ position: 'fixed', left: pos.left, top: pos.top }}
-      className="z-50 w-56 select-none rounded border border-line bg-overlay py-1 text-xs text-fg shadow-lg"
+      className="z-50 w-56 select-none rounded-xl border border-line bg-overlay/95 p-1 text-xs text-fg shadow-2xl backdrop-blur"
     >
       <div className="border-b border-line px-2.5 py-1 font-mono text-[11px] text-accent">{title}</div>
       {entries.map((entry, i) => (
@@ -178,7 +178,7 @@ export function ContextMenu({
             type="button"
             tabIndex={-1}
             onClick={() => activate(i)}
-            className={`flex w-full items-center justify-between gap-3 px-2.5 py-1 text-left transition hover:bg-hover focus:bg-hover aria-disabled:pointer-events-none aria-disabled:opacity-40 ${focusRing} ${
+            className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition hover:bg-hover focus:bg-hover aria-disabled:pointer-events-none aria-disabled:opacity-40 ${focusRing} ${
               entry.danger ? 'text-danger' : 'text-fg'
             }`}
           >

@@ -28,11 +28,18 @@ describe('StageHeader', () => {
     expect(out).not.toMatch(/<button[^>]*disabled=""[^>]*title="Sync to code/);
     expect(out).toMatch(/aria-label="Undo"/); expect(out).toMatch(/aria-label="Redo"[^>]*disabled=""|disabled=""[^>]*aria-label="Redo"/);
   });
-  it('offers the three views and hides edit actions off the stage tab', () => {
-    expect(render(store())).toMatch(/aria-checked="true"[^>]*>(?:<svg[\s\S]*?<\/svg>)?<span>Stage</);
-    expect(render(store())).toContain('Button.tsx');
+  it('shows the file and target, with no view tabs, and a way back from other views', () => {
+    const onStage = render(store());
+    expect(onStage).toContain('Button.tsx'); expect(onStage).toContain('buttonVariants');
+    expect(onStage).not.toContain('role="radiogroup"'); expect(onStage).not.toContain('>Code<'); expect(onStage).not.toContain('>API<');
+    expect(onStage).not.toContain('Back to stage'); expect(onStage).toContain('>In sync<');
     const out = render(store({ stage: { ...DEFAULT_STAGE_STATE, activeTab: 'ast' } }));
-    expect(out).toMatch(/aria-checked="true"[^>]*>(?:<svg[\s\S]*?<\/svg>)?<span>Code</); expect(out).not.toContain('>Sync<'); expect(out).not.toContain('aria-label="Undo"');
+    expect(out).toContain('>Back to stage<'); expect(out).not.toContain('>Sync<'); expect(out).not.toContain('aria-label="Undo"');
+  });
+  it('offers Compare and Discard only while there are unsynced changes', () => {
+    expect(render(store())).not.toContain('>Compare<');
+    const dirty = render(store({ dirty: true }));
+    expect(dirty).toContain('>Compare<'); expect(dirty).toContain('>Discard<'); expect(dirty).not.toContain('>In sync<');
   });
   it('uses only token colours', () => {
     expect(render(store({ dirty: true }))).not.toMatch(/zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-f]{6}/i);

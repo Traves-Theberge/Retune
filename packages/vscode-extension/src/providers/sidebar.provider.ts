@@ -34,9 +34,11 @@ export class RetuneSidebarProvider implements vscode.WebviewViewProvider {
     );
 
     this._sink?.dispose();
-    this._sink = StagePanel.registerSink('sidebar', (msg) => {
+    const sink = StagePanel.registerSink('sidebar', (msg) => {
       webviewView.webview.postMessage(msg);
     });
+    this._sink = sink;
+    webviewView.onDidDispose(() => sink.dispose());
 
     webviewView.webview.onDidReceiveMessage((message: WebviewMessage) =>
       StagePanel.handleSharedMessage(message, this._extensionUri, 'sidebar')

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
@@ -134,6 +134,7 @@ describe('retune-vscode standalone bundle & activation', () => {
         onDidReceiveMessage: () => ({ dispose: () => {} }),
         postMessage: async () => true,
       },
+      onDidDispose: () => ({ dispose: () => {} }),
     };
     getSidebarProvider().resolveWebviewView(mockWebviewView, {}, {});
     expect(mockWebviewView.webview.html).toContain('window.RETUNE_VIEW_MODE = "sidebar"');
@@ -151,7 +152,7 @@ describe('retune-vscode standalone bundle & activation', () => {
       options: {}, html: '', cspSource: 'vscode-resource:', asWebviewUri: (u: any) => u.fsPath,
       onDidReceiveMessage: (fn: any) => { receive = fn; return { dispose() {} }; },
       postMessage: async (m: any) => { posted.push(m); return true; },
-    } };
+    }, onDidDispose: () => ({ dispose() {} }) };
     getSidebarProvider().resolveWebviewView(view, {}, {});
     await receive({ type: 'READY' });
     expect(posted.find((m) => m.type === 'SYNC_COMPONENT')).toEqual({ type: 'SYNC_COMPONENT', payload: null });
@@ -161,6 +162,23 @@ describe('retune-vscode standalone bundle & activation', () => {
     expect(posted.filter((m) => m.type === 'SYNC_STAGE_STATE')).toEqual([]);
     await receive({ type: 'MUTATE_CLASSES', payload: { className: 'p-2' } });
     expect(posted.find((m) => m.type === 'MUTATION_RESULT').payload).toEqual({ ok: false, kind: 'classes', message: 'No active component file' });
+    ext.deactivate();
+  });
+
+  it('isolates a throwing sink so the sender handler still resolves', async () => {
+    const { ext, mockVscode, getSidebarProvider } = loadExtension();
+    ext.activate({ extensionUri: mockVscode.Uri.file(path.resolve(__dirname, '..', '..')), subscriptions: [] });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let receive: (m: any) => unknown = () => {};
+    const view = { webview: {
+      options: {}, html: '', cspSource: 'vscode-resource:', asWebviewUri: (u: any) => u.fsPath,
+      onDidReceiveMessage: (fn: any) => { receive = fn; return { dispose() {} }; },
+      postMessage: () => { throw new Error('webview gone'); },
+    }, onDidDispose: () => ({ dispose() {} }) };
+    getSidebarProvider().resolveWebviewView(view, {}, {});
+    await expect(receive({ type: 'READY' })).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
     ext.deactivate();
   });
 });

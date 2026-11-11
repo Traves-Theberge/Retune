@@ -55,7 +55,12 @@ export class StagePanel {
 
   public static broadcast(msg: HostMessage, except?: SinkId) {
     for (const [id, post] of sinks) {
-      if (id !== except) post(msg);
+      if (id === except) continue;
+      try {
+        post(msg);
+      } catch (err) {
+        console.warn(`[retune] sink '${id}' failed to deliver ${msg.type}:`, err);
+      }
     }
   }
 

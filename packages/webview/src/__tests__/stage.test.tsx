@@ -66,4 +66,39 @@ describe('stage pieces', () => {
     expect(html(<Stage store={store()} tone="light" comparing onToggleTone={noop} />)).toContain('px-2 baseline');
     expect(html(<Stage store={store({ stage: { ...DEFAULT_STAGE_STATE, targetElement: 'span' } })} tone="dark" comparing={false} onToggleTone={noop} />)).toMatch(/<span[^>]*px-4 current/);
   });
+
+  it('renders nested previewTree hierarchies, Variant Matrix view, and pseudo-state controls', () => {
+    const treeOut = html(
+      <Stage
+        store={store({
+          meta: {
+            ...DEMO_META,
+            previewTree: {
+              tag: 'div',
+              elementIndex: 0,
+              className: 'card-wrap',
+              children: [{ tag: 'span', elementIndex: 0, className: 'badge', text: 'New', children: [] }],
+            },
+          },
+        })}
+        tone="dark"
+        comparing={false}
+        onToggleTone={noop}
+      />
+    );
+    expect(treeOut).toContain('px-4 current');
+    expect(treeOut).toContain('>New<');
+    expect(treeOut).toContain('aria-label="State"');
+    expect(treeOut).toContain('aria-label="Variant Matrix"');
+
+    const matrixOut = html(
+      <Stage
+        store={store({ stage: { ...DEFAULT_STAGE_STATE, matrixMode: true } })}
+        tone="dark"
+        comparing={false}
+        onToggleTone={noop}
+      />
+    );
+    expect(matrixOut).toContain('Variant Matrix (15)');
+  });
 });

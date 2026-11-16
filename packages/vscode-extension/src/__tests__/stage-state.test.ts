@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyEdits, extractCvaMetadata, listElements, type StageState } from '@retune/core';
-import { fileClassFor, normalizeTarget, planClassMutation, planVariantMutation, reconcile, resolveTarget, sameTargetRef } from '../state/stage-state';
+import { fileClassFor, findElementAtOffset, normalizeTarget, planClassMutation, planCvaVariantMutation, planVariantMutation, reconcile, resolveTarget, sameTargetRef } from '../state/stage-state';
 
 const SRC = `const b = cva('base-a', { variants: {}, defaultVariants: { size: 'sm' } });
 export const A = () => (
@@ -82,9 +82,38 @@ describe('sameTargetRef', () => {
     expect(sameTargetRef({}, {})).toBe(true);
     expect(sameTargetRef({ targetElement: 'span' }, { targetElement: 'span', targetIndex: 0 })).toBe(true);
   });
-  it('differs by name or index', () => {
+  it('differs by name, index, or cvaTarget', () => {
     expect(sameTargetRef({ targetElement: 'span' }, { targetElement: 'div' })).toBe(false);
     expect(sameTargetRef({ targetElement: 'span', targetIndex: 1 }, { targetElement: 'span', targetIndex: 0 })).toBe(false);
     expect(sameTargetRef({}, { targetElement: 'span' })).toBe(false);
+    expect(sameTargetRef({}, { cvaTarget: { group: 'size', key: 'sm' } })).toBe(false);
+    expect(sameTargetRef({ cvaTarget: { group: 'size', key: 'sm' } }, { cvaTarget: { group: 'size', key: 'sm' } })).toBe(true);
+  });
+});
+
+describe('cvaTarget & cursor lookup', () => {
+  const VSRC = `const b = cva('base-a', { variants: { size: { sm: 'h-8 px-2' } }, defaultVariants: { size: 'sm' } });
+export const A = () => (<div><span>one</span><span>two</span></div>);`;
+
+  it('reads and edits a specific CVA variant class entry or adds a new one', () => {
+    const meta = extractCvaMetadata(VSRC);
+    const els = listElements(VSRC);
+    expect(fileClassFor(meta, els, { cvaTarget: { group: 'size', key: 'sm' } })).toBe('h-8 px-2');
+
+    const updatePlan = planClassMutation(VSRC, { cvaTarget: { group: 'size', key: 'sm' } }, 'h-9 px-3');
+    expect(updatePlan).toMatchObject({ ok: true });
+    expect(applyEdits(VSRC, (updatePlan as any).edit)).toContain("sm: 'h-9 px-3'");
+
+    const addPlan = planCvaVariantMutation(VSRC, 'size', 'lg', 'h-11 px-6');
+    expect(addPlan).toMatchObject({ ok: true });
+    expect(applyEdits(VSRC, (addPlan as any).edit)).toContain('lg: "h-11 px-6"');
+  });
+
+  it('resolves the innermost JSX element at a cursor offset', () => {
+    const els = listElements(VSRC);
+    const offset = VSRC.indexOf('<span') + 2;
+    expect(findElementAtOffset(els, offset)).toEqual({ targetElement: 'span', targetIndex: 0 });
+    const secondOffset = VSRC.lastIndexOf('<span') + 2;
+    expect(findElementAtOffset(els, secondOffset)).toEqual({ targetElement: 'span', targetIndex: 1 });
   });
 });

@@ -1,8 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { CvaMetadata, PreviewNode, PseudoStateMode } from '@retune/core';
 import type { StageStore } from '../../state/use-stage';
-import { parseArbitraryStyle } from '../../lib/arbitrary-style';
+import { contrastGrade, contrastRatio, isSmallTouchTarget } from '../../lib/a11y';
+import { parseArbitraryStyle, resolveSimulatedClasses, setArbitrary } from '../../lib/arbitrary-style';
 import { placePopover, type Rect, type Size } from '../../lib/placement';
 import { previewTag } from '../../lib/preview';
+import { scrubValue } from '../../lib/scrub';
 import { Popover } from '../ui';
 import { VIEWPORTS } from '../shared/viewports';
 import { EditPanel, PANELS, availablePanels, type PanelKind } from './edit-panels';
@@ -18,11 +21,14 @@ const GRID_STYLE = {
   WebkitMaskImage: 'radial-gradient(ellipse at center, black 35%, transparent 80%)',
 };
 
-/** Space kept above and below the element for the tag chip and the W x H badge. */
 const CHIP_CLEARANCE = 32;
 const TOOLBAR_PER_BUTTON = 72;
 const TOOLBAR_PADDING = 12;
 const TOOLBAR_HEIGHT = 32;
+const SAFE_HTML_TAGS = new Set([
+  'div', 'span', 'button', 'a', 'p', 'label', 'li', 'ul', 'ol',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article', 'nav', 'header', 'footer',
+]);
 
 function sameRect(a: Rect | null, b: Rect): boolean {
   return !!a && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
@@ -30,6 +36,29 @@ function sameRect(a: Rect | null, b: Rect): boolean {
 
 function sameSize(a: Size | null, b: Size): boolean {
   return !!a && a.width === b.width && a.height === b.height;
+}
+
+function renderTagForNode(tag: string, fallbackComponentName?: string): keyof React.JSX.IntrinsicElements {
+  if (SAFE_HTML_TAGS.has(tag)) return tag as keyof React.JSX.IntrinsicElements;
+  return previewTag(tag, fallbackComponentName) as keyof React.JSX.IntrinsicElements;
+}
+
+function buildVariantMatrix(cva: CvaMetadata, limit = 24): Record<string, string>[] {
+  const groups = Object.entries(cva.variants).filter(([, opts]) => opts.length > 0);
+  if (groups.length === 0) return [];
+  let combos: Record<string, string>[] = [{}];
+  for (const [group, options] of groups) {
+    const next: Record<string, string>[] = [];
+    for (const c of combos) {
+      for (const opt of options) {
+        next.push({ ...c, [group]: opt });
+        if (next.length >= limit) break;
+      }
+      if (next.length >= limit) break;
+    }
+    combos = next;
+  }
+  return combos;
 }
 
 export function Stage({
@@ -51,12 +80,13 @@ export function Stage({
   const [size, setSize] = useState<Size>({ width: 800, height: 600 });
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const [toolbarMeasured, setToolbarMeasured] = useState<Size | null>(null);
+  const [contrast, setContrast] = useState<number | null>(null);
   const [selected, setSelected] = useState(false);
   const [panel, setPanel] = useState<PanelKind | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Measure the canvas, the selected element and the toolbar. Setters bail out on unchanged
-  // values, so running this after every render cannot loop.
+  const dragRef = useRef<{ axis: 'width' | 'height'; startPos: number; baseVal: number } | null>(null);
+
   const measure = () => {
     const c = containerRef.current;
     const e = elementRef.current;
@@ -69,6 +99,14 @@ export function Stage({
       const er = e.getBoundingClientRect();
       const rect = { left: er.left - cr.left, top: er.top - cr.top, width: er.width, height: er.height };
       setAnchor((prev) => (sameRect(prev, rect) ? prev : rect));
+
+      const targetDom = e.firstElementChild as HTMLElement | null;
+      if (targetDom && typeof window.getComputedStyle === 'function') {
+        const cs = window.getComputedStyle(targetDom);
+        const backdrop: [number, number, number] = tone === 'light' ? [255, 255, 255] : [18, 18, 22];
+        const ratio = contrastRatio(cs.color, cs.backgroundColor, backdrop);
+        setContrast((prev) => (prev === ratio ? prev : ratio));
+      }
     }
     if (t) {
       const toolbar = { width: t.offsetWidth, height: t.offsetHeight };
@@ -80,8 +118,6 @@ export function Stage({
     measure();
   });
 
-  // Transitions (viewport switch, class edits) and container-only resizes change geometry
-  // without a Stage re-render, so observe the layout boxes directly.
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => measure());
@@ -89,10 +125,8 @@ export function Stage({
       if (node) observer.observe(node);
     }
     return () => observer.disconnect();
-    // measure only touches refs and setters, so the first closure stays valid.
-  }, []);
+  }, [tone]);
 
-  // Escape closes the innermost layer: context menu, then popover, then selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -104,7 +138,6 @@ export function Stage({
     return () => window.removeEventListener('keydown', onKey);
   }, [menu, panel, selected]);
 
-  // Clicking anywhere outside the menu dismisses it.
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
@@ -112,12 +145,44 @@ export function Stage({
     return () => window.removeEventListener('click', close);
   }, [menu]);
 
+  // Direct box-model width/height resize drag handlers
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const delta = drag.axis === 'width' ? e.clientX - drag.startPos : e.clientY - drag.startPos;
+      const prefix = drag.axis === 'width' ? 'w' : 'h';
+      const max = drag.axis === 'width' ? 600 : 200;
+      const val = scrubValue(drag.baseVal, delta, 2, 16, max);
+      store.setClasses(
+        setArbitrary(store.stage.harmonicsClass, prefix, `${val}px`, {
+          kind: 'length',
+          state: store.stage.pseudoState ?? 'none',
+        })
+      );
+    };
+    const onUp = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [store]);
+
+  const pseudoState: PseudoStateMode = stage.pseudoState ?? 'none';
   const disabled = Boolean(stage.propValues.disabled);
   const label = String(stage.propValues.label ?? '') || meta?.componentName || '';
   const tagName = previewTag(stage.targetElement, meta?.componentName);
   const Tag = tagName as keyof React.JSX.IntrinsicElements;
-  const classes = comparing ? store.baselinePreviewClass : store.previewClass;
+  const rawClasses = comparing ? store.baselinePreviewClass : store.previewClass;
+  const classes = resolveSimulatedClasses(rawClasses, pseudoState);
   const hasVariants = Boolean(meta?.cva?.hasCva && Object.keys(meta.cva.variants).length > 0);
+  const matrixMode = Boolean(stage.matrixMode && hasVariants);
   const panels = availablePanels(hasVariants);
   const panelTitle = PANELS.find((p) => p.kind === panel)?.title ?? '';
   const tagChip = `<${tagName}>`;
@@ -125,12 +190,10 @@ export function Stage({
   const frameWidth = viewportPreset.id === 'responsive' ? viewportPreset.widthClass : `${viewportPreset.widthClass} max-w-full`;
   const widthLabel = viewportPreset.id === 'responsive' ? 'Fluid' : `${viewportPreset.label}px`;
 
-  // Until the toolbar has been measured, fall back to a width estimate from the panel count.
   const toolbarSize = toolbarMeasured ?? {
     width: panels.length * TOOLBAR_PER_BUTTON + TOOLBAR_PADDING,
     height: TOOLBAR_HEIGHT,
   };
-  // The rect is extended so the toolbar clears the tag chip above and the size badge below.
   const toolbarPos = anchor
     ? placePopover(
         {
@@ -145,6 +208,51 @@ export function Stage({
       )
     : null;
 
+  const startHandleDrag = (axis: 'width' | 'height', e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const baseVal = axis === 'width' ? Math.round(anchor?.width ?? 120) : Math.round(anchor?.height ?? 36);
+    dragRef.current = { axis, startPos: axis === 'width' ? e.clientX : e.clientY, baseVal };
+  };
+
+  const renderTree = (node: PreviewNode, isRoot = false): React.ReactNode => {
+    const isTarget =
+      node.elementIndex >= 0 &&
+      (stage.targetElement
+        ? stage.targetElement === node.tag && (stage.targetIndex ?? 0) === node.elementIndex
+        : isRoot);
+    const El = renderTagForNode(node.tag, meta?.componentName);
+    const nodeRawClasses = isTarget ? rawClasses : node.className;
+    const nodeClasses = resolveSimulatedClasses(nodeRawClasses, pseudoState);
+    const nodeStyle = parseArbitraryStyle(nodeRawClasses, pseudoState);
+
+    return (
+      <El
+        key={`${node.tag}-${node.elementIndex}`}
+        onClick={(e: React.MouseEvent) => {
+          e.stopPropagation();
+          if (node.elementIndex >= 0) {
+            store.selectElement({ name: node.tag, index: node.elementIndex });
+          }
+          setSelected(true);
+          setMenu(null);
+        }}
+        className={`transition-all ${nodeClasses} ${
+          isTarget && !isRoot ? 'outline outline-1 outline-accent/80 outline-offset-2' : ''
+        } ${disabled && isRoot ? 'opacity-50' : ''}`}
+        style={nodeStyle}
+      >
+        {node.children.length > 0
+          ? node.children.map((child) => renderTree(child, false))
+          : node.text || (isRoot ? label : node.tag)}
+      </El>
+    );
+  };
+
+  const useTreePreview = Boolean(meta?.previewTree && meta.previewTree.children.length > 0);
+  const matrixCombos = matrixMode && meta?.cva ? buildVariantMatrix(meta.cva) : [];
+  const a11ySmall = anchor ? isSmallTouchTarget(anchor.width, anchor.height) : false;
+
   return (
     <div
       ref={containerRef}
@@ -155,7 +263,6 @@ export function Stage({
       }}
       onContextMenu={(e) => {
         const target = e.target as HTMLElement;
-        // Keep native cut/copy/paste menus inside text fields in the popover.
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         e.preventDefault();
       }}
@@ -172,52 +279,117 @@ export function Stage({
         }`}
       >
         <span className="h-px flex-1 bg-current opacity-25" />
-        <span>{widthLabel}</span>
+        <span>{matrixMode ? `Variant Matrix (${matrixCombos.length})` : widthLabel}</span>
+        {pseudoState !== 'none' && <span>{`· :${pseudoState}`}</span>}
         <span className="h-px flex-1 bg-current opacity-25" />
       </div>
 
       <div
         ref={frameRef}
-        className={`relative flex min-h-[280px] items-center justify-center rounded-2xl border p-14 shadow-2xl transition-all duration-150 ${frameWidth} ${
+        className={`relative flex min-h-[280px] items-center justify-center rounded-2xl border p-10 shadow-2xl transition-all duration-150 ${frameWidth} ${
           tone === 'light' ? 'border-frame-dark/10 bg-frame-light' : 'border-line bg-frame-dark'
         }`}
       >
-        <div
-          ref={elementRef}
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelected(true);
-            setMenu(null);
-          }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setSelected(true);
-            setMenu(null);
-            setPanel('text');
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setSelected(true);
-            setMenu({ x: e.clientX, y: e.clientY });
-          }}
-          className={`relative cursor-pointer rounded-md outline-offset-4 ${
-            selected ? 'outline outline-2 outline-accent' : 'hover:outline hover:outline-1 hover:outline-accent/60'
-          }`}
-        >
-          <Tag
-            className={`transition-all ${classes} ${disabled ? 'opacity-50' : ''}`}
-            style={{ ...parseArbitraryStyle(classes), pointerEvents: 'none' }}
+        {matrixMode && meta?.cva ? (
+          <div className="grid max-h-[380px] w-full grid-cols-2 gap-3 overflow-y-auto p-1 sm:grid-cols-3">
+            {matrixCombos.map((combo, idx) => {
+              const parts = [stage.harmonicsClass];
+              for (const [g, v] of Object.entries(combo)) {
+                const c = meta.cva.variantClasses?.[g]?.[v];
+                if (c) parts.push(c);
+              }
+              const comboRaw = parts.filter(Boolean).join(' ');
+              const comboClasses = resolveSimulatedClasses(comboRaw, pseudoState);
+              const comboLabel = Object.entries(combo).map(([, v]) => v).join(' / ');
+              const isActive = Object.entries(combo).every(([g, v]) => stage.selectedVariants[g] === v);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    store.patchStage({ selectedVariants: combo, matrixMode: false });
+                  }}
+                  className={`flex flex-col items-center justify-center gap-2 rounded-xl border p-3 transition ${
+                    isActive ? 'border-accent bg-accent/10' : 'border-line hover:bg-hover'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none transition-all ${comboClasses}`}
+                    style={parseArbitraryStyle(comboRaw, pseudoState)}
+                  >
+                    {label || comboLabel}
+                  </span>
+                  <span className="font-mono text-[11px] text-subtle">{comboLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            ref={elementRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected(true);
+              setMenu(null);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setSelected(true);
+              setMenu(null);
+              setPanel('text');
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setSelected(true);
+              setMenu({ x: e.clientX, y: e.clientY });
+            }}
+            className={`relative cursor-pointer rounded-md outline-offset-4 ${
+              selected ? 'outline outline-2 outline-accent' : 'hover:outline hover:outline-1 hover:outline-accent/60'
+            }`}
           >
-            {label}
-          </Tag>
-        </div>
+            {useTreePreview && meta?.previewTree ? (
+              renderTree(meta.previewTree, true)
+            ) : (
+              <Tag
+                className={`transition-all ${classes} ${disabled ? 'opacity-50' : ''}`}
+                style={{ ...parseArbitraryStyle(rawClasses, pseudoState), pointerEvents: 'none' }}
+              >
+                {label}
+              </Tag>
+            )}
+
+            {/* Direct box-model drag handles when selected */}
+            {selected && (
+              <>
+                <div
+                  role="separator"
+                  aria-label="Resize width"
+                  data-handle="width"
+                  title="Drag horizontally to resize width"
+                  onPointerDown={(e) => startHandleDrag('width', e)}
+                  className="absolute top-1/2 -right-3 h-5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-accent shadow-sm"
+                />
+                <div
+                  role="separator"
+                  aria-label="Resize height"
+                  data-handle="height"
+                  title="Drag vertically to resize height"
+                  onPointerDown={(e) => startHandleDrag('height', e)}
+                  className="absolute -bottom-3 left-1/2 h-1.5 w-5 -translate-x-1/2 cursor-ns-resize rounded-full bg-accent shadow-sm"
+                />
+              </>
+            )}
+          </div>
+        )}
       </div>
+
       <p className={`relative mt-3 text-[11px] ${tone === 'light' ? 'text-frame-dark/50' : 'text-subtle'}`}>
         Approximate preview — classes only
       </p>
 
-      {selected && anchor && (
+      {selected && anchor && !matrixMode && (
         <>
           <span
             aria-hidden="true"
@@ -228,15 +400,21 @@ export function Stage({
           </span>
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm"
+            className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm whitespace-nowrap"
             style={{ left: anchor.left + anchor.width / 2, top: anchor.top + anchor.height + 10 }}
           >
-            {`${Math.round(anchor.width)} × ${Math.round(anchor.height)}`}
+            {[
+              `${Math.round(anchor.width)} × ${Math.round(anchor.height)}`,
+              contrast !== null ? `${contrastGrade(contrast)} ${contrast}:1` : null,
+              a11ySmall ? 'tap <44' : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         </>
       )}
 
-      {selected && anchor && !panel && toolbarPos && (
+      {selected && anchor && !panel && !matrixMode && toolbarPos && (
         <div
           ref={toolbarRef}
           className="absolute z-20 w-max"
@@ -246,7 +424,7 @@ export function Stage({
         </div>
       )}
 
-      {selected && panel && (
+      {selected && panel && !matrixMode && (
         <Popover
           anchor={anchor}
           container={size}
@@ -265,6 +443,11 @@ export function Stage({
         onToggleGrid={() => store.patchStage({ showGrid: !stage.showGrid })}
         tone={tone}
         onToggleTone={onToggleTone}
+        pseudoState={pseudoState}
+        onPseudoState={(s) => store.patchStage({ pseudoState: s })}
+        hasVariants={hasVariants}
+        matrixMode={matrixMode}
+        onToggleMatrix={() => store.patchStage({ matrixMode: !matrixMode })}
       />
 
       {menu && (

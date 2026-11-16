@@ -4,6 +4,7 @@ import {
   computeClassNameEdit,
   computeDefaultVariantEdit,
   extractElementClassName,
+  extractPreviewTree,
   listElements,
   mutateClassName,
   mutateDefaultVariant,
@@ -96,6 +97,32 @@ describe('jsx-mutator: defaultVariants', () => {
     const out = applyEdits(src, edit);
     expect(out).toContain('tone: "soft"');
     expect(out).toContain('// keep this comment');
+  });
+});
+
+describe('extractPreviewTree', () => {
+  it('builds a nested JSX preview hierarchy with matching per-tag indices', () => {
+    const src = `
+      function Helper() { return <span className="helper">h</span>; }
+      export function Card() {
+        return (
+          <div className="rounded-lg border p-4">
+            <h3 className="font-bold">Title</h3>
+            <span className="text-sm">Subtitle</span>
+            <button className="px-3 py-1">Action</button>
+          </div>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(src);
+    expect(tree).not.toBeNull();
+    expect(tree?.tag).toBe('div');
+    expect(tree?.className).toBe('rounded-lg border p-4');
+    expect(tree?.children.map((c) => c.tag)).toEqual(['h3', 'span', 'button']);
+    expect(tree?.children[0].text).toBe('Title');
+    // Second <span> in file because Helper() has index 0
+    expect(tree?.children[1].elementIndex).toBe(1);
+    expect(tree?.children[2].className).toBe('px-3 py-1');
   });
 });
 

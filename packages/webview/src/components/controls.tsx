@@ -1,7 +1,8 @@
 import { useRef } from 'react';
-import { getArbitrary, setArbitrary, splitClasses } from '../lib/arbitrary-style';
+import type { PseudoStateMode } from '@retune/core';
+import { getArbitrary, setArbitrary, splitClasses, statePrefix } from '../lib/arbitrary-style';
 import { scrubValue } from '../lib/scrub';
-import { ColorField, Row, ScrubInput, Segmented, Section } from './ui';
+import { ColorField, Row, ScrubInput, Segmented } from './ui';
 
 /* ---------- Token presets shared by the sidebar, modals and context menu ---------- */
 
@@ -62,18 +63,30 @@ export function LengthRow({
 
 /* ---------- Class editor: one implementation behind sidebar, modals and menus ---------- */
 
-export function createClassEditor(classes: string, set: (next: string) => void) {
-  const activePreset = (group: string[]) => splitClasses(classes).find((t) => group.includes(t));
+export function createClassEditor(
+  classes: string,
+  set: (next: string) => void,
+  state: PseudoStateMode = 'none'
+) {
+  const mod = statePrefix(state);
+  const prefixed = (group: string[]) => group.map((t) => `${mod}${t}`);
+
+  const activePreset = (group: string[]) => {
+    const targets = prefixed(group);
+    const match = splitClasses(classes).find((t) => targets.includes(t));
+    return match ? match.slice(mod.length) : undefined;
+  };
 
   const pickPreset = (group: string[], token: string) => {
-    const filtered = splitClasses(classes).filter((t) => !group.includes(t));
-    set([...filtered, token].join(' '));
+    const targets = prefixed(group);
+    const filtered = splitClasses(classes).filter((t) => !targets.includes(t));
+    set([...filtered, `${mod}${token}`].join(' '));
   };
 
   const lenProps = (prefix: string, conflicts: string[]) => ({
-    value: getArbitrary(classes, prefix, 'length'),
-    onChange: (v: string) => set(setArbitrary(classes, prefix, v, { kind: 'length', conflicts })),
-    onClear: () => set(setArbitrary(classes, prefix, null, { kind: 'length' })),
+    value: getArbitrary(classes, prefix, 'length', state),
+    onChange: (v: string) => set(setArbitrary(classes, prefix, v, { kind: 'length', conflicts, state })),
+    onClear: () => set(setArbitrary(classes, prefix, null, { kind: 'length', state })),
   });
 
   const len = (prefix: string, conflicts: string[], min: number, max: number, step = 1) => (
@@ -86,21 +99,21 @@ export function createClassEditor(classes: string, set: (next: string) => void) 
 
   const col = (prefix: string, conflicts: string[] = []) => (
     <ColorField
-      value={getArbitrary(classes, prefix, 'color')}
-      onChange={(v) => set(setArbitrary(classes, prefix, v, { kind: 'color', conflicts }))}
-      onClear={() => set(setArbitrary(classes, prefix, null, { kind: 'color' }))}
+      value={getArbitrary(classes, prefix, 'color', state)}
+      onChange={(v) => set(setArbitrary(classes, prefix, v, { kind: 'color', conflicts, state }))}
+      onClear={() => set(setArbitrary(classes, prefix, null, { kind: 'color', state }))}
     />
   );
 
   const opacity = (
     <ScrubInput
-      value={getArbitrary(classes, 'opacity')}
+      value={getArbitrary(classes, 'opacity', undefined, state)}
       min={0}
       max={1}
       step={0.05}
       unit=""
-      onChange={(v) => set(setArbitrary(classes, 'opacity', v))}
-      onClear={() => set(setArbitrary(classes, 'opacity', null))}
+      onChange={(v) => set(setArbitrary(classes, 'opacity', v, { state }))}
+      onClear={() => set(setArbitrary(classes, 'opacity', null, { state }))}
     />
   );
 

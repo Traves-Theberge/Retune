@@ -2,6 +2,7 @@ import {
   applyEdits,
   computeClassNameEdit,
   computeCvaBaseEdit,
+  computeCvaVariantEdit,
   computeDefaultVariantEdit,
   extractCvaMetadata,
   listElements,
@@ -16,6 +17,7 @@ import {
 export interface TargetRef {
   targetElement?: string;
   targetIndex?: number;
+  cvaTarget?: { group: string; key: string } | null;
 }
 
 export type MutationPlan =
@@ -28,8 +30,27 @@ export function resolveTarget(elements: ElementInfo[], name?: string, index = 0)
   return elements.filter((el) => el.name === name)[index];
 }
 
+export function findElementAtOffset(
+  elements: ElementInfo[],
+  offset: number
+): { targetElement: string; targetIndex: number } | undefined {
+  const containing = elements
+    .filter((el) => el.start <= offset && offset <= el.end)
+    .sort((a, b) => a.end - a.start - (b.end - b.start));
+  const chosen = containing[0];
+  if (!chosen) return undefined;
+  const sameTag = elements.filter((el) => el.name === chosen.name);
+  const idx = sameTag.indexOf(chosen);
+  return { targetElement: chosen.name, targetIndex: idx >= 0 ? idx : 0 };
+}
+
 export function sameTargetRef(a: TargetRef, b: TargetRef): boolean {
-  return a.targetElement === b.targetElement && (a.targetIndex ?? 0) === (b.targetIndex ?? 0);
+  return (
+    a.targetElement === b.targetElement &&
+    (a.targetIndex ?? 0) === (b.targetIndex ?? 0) &&
+    (a.cvaTarget?.group ?? null) === (b.cvaTarget?.group ?? null) &&
+    (a.cvaTarget?.key ?? null) === (b.cvaTarget?.key ?? null)
+  );
 }
 
 /** Returns {} when name is missing or matches nothing; otherwise { targetElement: name, targetIndex } with index clamped to the last match. */
@@ -41,8 +62,11 @@ export function normalizeTarget(elements: ElementInfo[], name?: string, index?: 
   return { targetElement: name, targetIndex };
 }
 
-/** Classes the file holds for the target; root = cva base when hasCva, else first element's className, else ''. */
+/** Classes the file holds for the target; cvaTarget -> variantClasses, element -> element className, root -> cva base or first element. */
 export function fileClassFor(cva: CvaMetadata, elements: ElementInfo[], target: TargetRef): string {
+  if (target.cvaTarget) {
+    return cva.variantClasses?.[target.cvaTarget.group]?.[target.cvaTarget.key] ?? '';
+  }
   if (target.targetElement) {
     return resolveTarget(elements, target.targetElement, target.targetIndex)?.className ?? '';
   }
@@ -67,8 +91,27 @@ function finish(source: string, edit: TextEdit | null): MutationPlan {
   return { ok: true, edit, message: 'Synced to code' };
 }
 
+export function planCvaVariantMutation(
+  source: string,
+  group: string,
+  key: string,
+  className: string
+): MutationPlan {
+  try {
+    const edit = computeCvaVariantEdit(source, group, key, className);
+    if (!edit) return { ok: false, message: `Variant "${group}.${key}" could not be edited` };
+    if (applyEdits(source, edit) === source) return noop();
+    return { ok: true, edit, message: `Saved ${group}.${key} to code` };
+  } catch {
+    return { ok: false, message: 'Could not parse file' };
+  }
+}
+
 export function planClassMutation(source: string, target: TargetRef, className: string): MutationPlan {
   try {
+    if (target.cvaTarget) {
+      return planCvaVariantMutation(source, target.cvaTarget.group, target.cvaTarget.key, className);
+    }
     if (target.targetElement) {
       const el = resolveTarget(listElements(source), target.targetElement, target.targetIndex);
       if (!el) return { ok: false, message: `No <${target.targetElement}> element found` };

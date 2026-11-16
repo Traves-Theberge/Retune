@@ -26,13 +26,15 @@ describe('@retune/engine HTTP Daemon', () => {
     expect(json.info.title).toBe('Retune Engine API');
   });
 
-  it('inspects CVA components via POST /v1/components/inspect', async () => {
+  it('inspects CVA components, props, elements, and previewTree via POST /v1/components/inspect', async () => {
     const baseUrl = await getBaseUrl();
     const res = await fetch(`${baseUrl}/v1/components/inspect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        fileContent: `const badgeVariants = cva("inline-flex", { variants: { tone: { info: "bg-blue-500" } }, defaultVariants: { tone: "info" } });`,
+        fileContent: `const badgeVariants = cva("inline-flex", { variants: { tone: { info: "bg-blue-500" } }, defaultVariants: { tone: "info" } });
+export interface BadgeProps { label: string; }
+export function Badge({ label }: BadgeProps) { return <div className="p-1"><span className="text-xs">{label}</span></div>; }`,
       }),
     });
     expect(res.status).toBe(200);
@@ -40,6 +42,10 @@ describe('@retune/engine HTTP Daemon', () => {
     expect(data.cva.hasCva).toBe(true);
     expect(data.cva.baseClasses).toBe('inline-flex');
     expect(data.cva.variants.tone).toEqual(['info']);
+    expect(data.props).toEqual([{ name: 'label', type: 'string', optional: false }]);
+    expect(data.elements.length).toBe(2);
+    expect(data.previewTree?.tag).toBe('div');
+    expect(data.previewTree?.children[0]?.tag).toBe('span');
   });
 
   it('mutates JSX classes via POST /v1/components/mutate', async () => {
@@ -57,6 +63,23 @@ describe('@retune/engine HTTP Daemon', () => {
     const data = await res.json();
     expect(data.success).toBe(true);
     expect(data.updatedContent).toContain('className="p-4 shadow-xl"');
+  });
+
+  it('mutates CVA variants via POST /v1/components/mutate', async () => {
+    const baseUrl = await getBaseUrl();
+    const res = await fetch(`${baseUrl}/v1/components/mutate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileContent: `const v = cva("inline-flex", { variants: { tone: { info: "bg-blue-500" } } });`,
+        cvaVariant: { group: 'tone', key: 'brand' },
+        className: 'bg-purple-600 text-white',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.updatedContent).toContain('brand: "bg-purple-600 text-white"');
   });
 });
 

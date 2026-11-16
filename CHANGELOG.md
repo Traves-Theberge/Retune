@@ -9,7 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
-- **Targeted edits**: Edits go to the selected element (the Nth JSX element with an exact name) or to the component root (the `cva()` base classes when present). Class changes are written as a minimal text edit.
+- **Targeted edits**: Edits go to the selected element (the Nth JSX element with an exact name), to the component root (the `cva()` base classes when present), or directly inside any named `cva().variants[group][key]` entry (`computeCvaVariantEdit`). Class changes are written as minimal text splices (`TextEdit`).
+- **New Variant extraction (`+` in `VariantPicker`)**: Save tuned Stage/Sidebar classes directly into `cva().variants[group]` as a brand-new named variant key (`MUTATE_CVA_VARIANT`) or switch between base and variant editing (`SELECT_CVA_TARGET`).
+- **Multi-element `PreviewNode` tree**: `extractPreviewTree` parses the component's returned JSX hierarchy so nested child elements render interactively on the Stage and select directly on click.
+- **Box-model drag handles & live a11y HUD**: Selecting an element on the Stage shows direct horizontal/vertical resize handles (`w-[Npx]`, `h-[Npx]`) and computes real WCAG contrast (`AAA` / `AA` / `AA Large` / `Low`) plus `44px` touch-target checks from resolved styles.
+- **Pseudo-state simulator & Variant Matrix**: Simulate `:hover`, `:focus-visible`, and `:active` in the Canvas Dock and Sidebar (applying state-prefixed classes), or toggle the Variant Matrix view to inspect every CVA combination in an interactive grid.
+- **Bidirectional Editor ↔ Stage cursor sync**: Moving the cursor in a `.tsx`/`.jsx` editor automatically highlights the innermost JSX element on the Stage (when no unsynced edits exist).
+- **MCP & Daemon parity**: `@retune/engine`, `openapi.json`, and `@retune/mcp` now expose `props`, `elements`, `previewTree`, `targetIndex`-targeted class mutations, `cvaBase`, and `retune_mutate_cva_variant`.
+- **Lazy-loaded Scalar console**: `@scalar/api-reference-react` is deferred via `React.lazy` until switching to the API view.
 - **Real sync results**: Sync reports success or a specific failure (for example `No <span> element found`) from the host. Syncing with nothing changed reports `Already up to date`.
 - **Undo/redo**: Per-webview history (100 steps). Changes within 400 ms coalesce into one step. Shortcuts `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y`.
 - **Single Sync**: One primary Sync button (`Ctrl/Cmd+S`), enabled only when the classes are dirty. The host tracks the dirty state.

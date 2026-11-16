@@ -1,5 +1,15 @@
 import http from 'node:http';
-import { extractCvaMetadata, mutateClassName, openApiSpec } from '@retune/core';
+import {
+  analyzeProps,
+  extractCvaMetadata,
+  extractPreviewTree,
+  listElements,
+  mutateClassName,
+  mutateCvaBase,
+  mutateCvaVariant,
+  mutateDefaultVariant,
+  openApiSpec,
+} from '@retune/core';
 
 export function createRetuneDaemon(port = 49221) {
   const server = http.createServer((req, res) => {
@@ -30,9 +40,12 @@ export function createRetuneDaemon(port = 49221) {
       req.on('end', () => {
         try {
           const { fileContent } = JSON.parse(body);
-          const cvaMeta = extractCvaMetadata(fileContent);
+          const cva = extractCvaMetadata(fileContent);
+          const props = analyzeProps(fileContent);
+          const elements = listElements(fileContent);
+          const previewTree = extractPreviewTree(fileContent);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ cva: cvaMeta }));
+          res.end(JSON.stringify({ cva, props, elements, previewTree }));
         } catch (err: any) {
           res.writeHead(422, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err.message }));
@@ -47,8 +60,29 @@ export function createRetuneDaemon(port = 49221) {
       req.on('data', (chunk) => (body += chunk));
       req.on('end', () => {
         try {
-          const { fileContent, componentName, className } = JSON.parse(body);
-          const updated = mutateClassName(fileContent, componentName, className);
+          const {
+            fileContent,
+            componentName = '',
+            targetIndex,
+            cvaBase,
+            cvaVariant,
+            defaultVariant,
+            className = '',
+          } = JSON.parse(body);
+          let updated: string;
+          if (defaultVariant?.group && defaultVariant?.value !== undefined) {
+            updated = mutateDefaultVariant(fileContent, defaultVariant.group, defaultVariant.value);
+          } else if (cvaVariant?.group && cvaVariant?.key) {
+            updated = mutateCvaVariant(fileContent, cvaVariant.group, cvaVariant.key, className);
+          } else if (cvaBase) {
+            updated = mutateCvaBase(fileContent, className);
+          } else if (typeof targetIndex === 'number' && componentName) {
+            const matches = listElements(fileContent).filter((el) => el.name === componentName);
+            const target = matches[targetIndex];
+            updated = mutateClassName(fileContent, componentName, className, target?.start);
+          } else {
+            updated = mutateClassName(fileContent, componentName, className);
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ updatedContent: updated, success: true }));
         } catch (err: any) {

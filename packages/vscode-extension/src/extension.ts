@@ -73,6 +73,17 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  const selectionChangeDisposable = vscode.window.onDidChangeTextEditorSelection((event) => {
+    const currentConfig = getRetuneConfig();
+    if (!currentConfig.autoSyncActiveEditor) return;
+    if (
+      event.textEditor.document.fileName.endsWith('.tsx') ||
+      event.textEditor.document.fileName.endsWith('.jsx')
+    ) {
+      StagePanel.syncCursorPosition(event.textEditor);
+    }
+  });
+
   context.subscriptions.push(
     sidebarDisposable,
     sidebarProvider,
@@ -80,6 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
     editorChangeDisposable,
     docChangeDisposable,
     configChangeDisposable,
+    selectionChangeDisposable,
     ...stageCommands
   );
 }

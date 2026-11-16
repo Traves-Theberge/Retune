@@ -73,6 +73,12 @@ export function extractCvaMetadata(sourceCode: string): CvaMetadata {
                       metadata.variants[groupName].push(optName);
                       if (t.isStringLiteral(vOption.value)) {
                         metadata.variantClasses[groupName][optName] = vOption.value.value;
+                      } else if (
+                        t.isTemplateLiteral(vOption.value) &&
+                        vOption.value.expressions.length === 0
+                      ) {
+                        metadata.variantClasses[groupName][optName] =
+                          vOption.value.quasis[0]?.value.cooked ?? '';
                       } else if (t.isArrayExpression(vOption.value)) {
                         metadata.variantClasses[groupName][optName] = vOption.value.elements
                           .filter((el): el is t.StringLiteral => t.isStringLiteral(el))

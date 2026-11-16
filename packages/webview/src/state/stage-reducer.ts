@@ -103,15 +103,29 @@ export function isDirty(model: StageModel): boolean {
 }
 
 export function computePreviewClass(model: StageModel, classes?: string): string {
-  const base = classes ?? model.stage.harmonicsClass;
+  const working = classes ?? model.stage.harmonicsClass;
   const groups = model.meta?.cva.variantClasses ?? {};
+  const cvaTarget = model.stage.cvaTarget;
+
+  if (cvaTarget && !model.stage.targetElement) {
+    const base = model.meta?.cva.baseClasses ?? '';
+    const variantParts = Object.entries(model.stage.selectedVariants).map(([group, value]) =>
+      group === cvaTarget.group ? working : groups[group]?.[value] ?? ''
+    );
+    if (!(cvaTarget.group in model.stage.selectedVariants)) {
+      variantParts.push(working);
+    }
+    return [base, ...variantParts].filter(Boolean).join(' ').trim();
+  }
+
   const variantParts = Object.entries(model.stage.selectedVariants).map(
     ([group, value]) => groups[group]?.[value] ?? '',
   );
-  return [base, ...variantParts].filter(Boolean).join(' ').trim();
+  return [working, ...variantParts].filter(Boolean).join(' ').trim();
 }
 
 export function targetLabel(model: StageModel): string {
+  if (model.stage.cvaTarget) return `${model.stage.cvaTarget.group}:${model.stage.cvaTarget.key}`;
   if (model.stage.targetElement) return `<${model.stage.targetElement}>`;
   const meta = model.meta;
   if (!meta) return 'Component';
@@ -121,5 +135,10 @@ export function targetLabel(model: StageModel): string {
 }
 
 export function sameTarget(a: StageState, b: StageState): boolean {
-  return a.targetElement === b.targetElement && (a.targetIndex ?? 0) === (b.targetIndex ?? 0);
+  return (
+    a.targetElement === b.targetElement &&
+    (a.targetIndex ?? 0) === (b.targetIndex ?? 0) &&
+    (a.cvaTarget?.group ?? null) === (b.cvaTarget?.group ?? null) &&
+    (a.cvaTarget?.key ?? null) === (b.cvaTarget?.key ?? null)
+  );
 }

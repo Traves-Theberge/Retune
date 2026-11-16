@@ -43,7 +43,24 @@ describe('stage reducer', () => {
     expect(computePreviewClass(m, 'only')).toMatch(/^only /);
     expect(targetLabel(m)).toBe('buttonVariants');
     expect(targetLabel({ ...m, stage: { ...m.stage, targetElement: 'span' } })).toBe('<span>');
+    expect(targetLabel({ ...m, stage: { ...m.stage, cvaTarget: { group: 'variant', key: 'destructive' } } })).toBe('variant:destructive');
     expect(targetLabel(initialModel('vscode'))).toBe('Component');
+  });
+
+  it('computes preview class cleanly when editing a specific cvaTarget variant', () => {
+    const m = base();
+    const editingVariant = {
+      ...m,
+      stage: {
+        ...m.stage,
+        cvaTarget: { group: 'variant', key: 'destructive' },
+        harmonicsClass: 'bg-custom-variant text-white',
+      },
+    };
+    const cls = computePreviewClass(editingVariant);
+    expect(cls).toContain('inline-flex');
+    expect(cls).toContain('bg-custom-variant');
+    expect(cls).not.toContain('bg-indigo-600');
   });
   it('starts a clean undo history on first load and on a file switch', () => {
     const host = (message: any, now: number) => ({ type: 'host' as const, message, now });

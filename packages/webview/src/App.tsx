@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { ApiReferenceReact } from '@scalar/api-reference-react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Stage } from './components/stage/stage';
 import { SidebarView } from './components/sidebar/sidebar-view';
 import { StageHeader } from './components/stage-header';
@@ -8,6 +7,10 @@ import { NoComponent, ProblemBanner } from './components/shared/file-problem';
 import { isTextField, matchShortcut } from './lib/shortcuts';
 import { useIsDark } from './hooks/use-is-dark';
 import { useStage } from './state/use-stage';
+
+const LazyScalarApi = React.lazy(() =>
+  import('@scalar/api-reference-react').then((mod) => ({ default: mod.ApiReferenceReact }))
+);
 
 declare global {
   interface Window {
@@ -113,16 +116,24 @@ export function App() {
 
           {stage.activeTab === 'api' && (
             <div className="h-full w-full overflow-y-auto">
-              <ApiReferenceReact
-                configuration={
-                  {
-                    url: `http://127.0.0.1:${config.daemonPort}/v1/openapi.json`,
-                    spec: { url: `http://127.0.0.1:${config.daemonPort}/v1/openapi.json` },
-                    darkMode: isDark,
-                    layout: config.scalarLayout,
-                  } as any
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center font-mono text-xs text-muted">
+                    Loading OpenAPI reference…
+                  </div>
                 }
-              />
+              >
+                <LazyScalarApi
+                  configuration={
+                    {
+                      url: `http://127.0.0.1:${config.daemonPort}/v1/openapi.json`,
+                      spec: { url: `http://127.0.0.1:${config.daemonPort}/v1/openapi.json` },
+                      darkMode: isDark,
+                      layout: config.scalarLayout,
+                    } as any
+                  }
+                />
+              </Suspense>
             </div>
           )}
         </main>

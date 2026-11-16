@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
   extractCvaMetadata,
+  extractPreviewTree,
   analyzeProps,
   listElements,
   ComponentMetadata,
@@ -16,8 +17,10 @@ import { getRetuneConfig, updateRetuneConfig } from '../config/extension-config'
 import { buildWebviewHtml, getWebviewDistDir } from './webview-html';
 import {
   fileClassFor,
+  findElementAtOffset,
   normalizeTarget,
   planClassMutation,
+  planCvaVariantMutation,
   planVariantMutation,
   reconcile,
   resolveTarget,
@@ -113,6 +116,7 @@ export class StagePanel {
         props,
         rawSource: text,
         elements: listElements(text),
+        previewTree: extractPreviewTree(text),
       };
       StagePanel._lastGood = { uri: doc.uri.toString(), meta };
       StagePanel._problem = null;
@@ -203,12 +207,18 @@ export class StagePanel {
         };
         delete next.targetElement;
         delete next.targetIndex;
+        delete next.cvaTarget;
       }
-      const target: TargetRef = { targetElement: next.targetElement, targetIndex: next.targetIndex };
+      const target: TargetRef = {
+        targetElement: next.targetElement,
+        targetIndex: next.targetIndex,
+        cvaTarget: next.cvaTarget,
+      };
       const elements = meta.elements ?? [];
-      const resolves =
-        !target.targetElement ||
-        resolveTarget(elements, target.targetElement, target.targetIndex) !== undefined;
+      const resolves = target.cvaTarget
+        ? Boolean(meta.cva.variants[target.cvaTarget.group]?.includes(target.cvaTarget.key))
+        : !target.targetElement ||
+          resolveTarget(elements, target.targetElement, target.targetIndex) !== undefined;
       const fileClass = resolves ? fileClassFor(meta.cva, elements, target) : next.baselineClass;
       StagePanel._stageState = reconcile(next, fileClass, targetChanged);
     }
@@ -216,6 +226,29 @@ export class StagePanel {
     if (StagePanel.currentPanel) {
       StagePanel.currentPanel._panel.title = `Retune: ${meta?.componentName || 'Stage'}`;
     }
+    StagePanel.syncAll();
+  }
+
+  public static syncCursorPosition(editor: vscode.TextEditor) {
+    if (!StagePanel._activeDocument || editor.document.uri.toString() !== StagePanel._activeDocument.uri.toString()) {
+      return;
+    }
+    const state = StagePanel._stageState;
+    // Never overwrite unsynced edits on cursor movement
+    if (state.harmonicsClass !== state.baselineClass) return;
+    const meta = StagePanel.getActiveMetadata();
+    if (!meta?.elements?.length) return;
+    const offset = editor.document.offsetAt(editor.selection.active);
+    const hit = findElementAtOffset(meta.elements, offset);
+    if (!hit) return;
+    const target: TargetRef = { ...hit, cvaTarget: null };
+    const current: TargetRef = {
+      targetElement: state.targetElement,
+      targetIndex: state.targetIndex,
+      cvaTarget: state.cvaTarget,
+    };
+    if (sameTargetRef(current, target)) return;
+    StagePanel._setTarget(target, meta);
     StagePanel.syncAll();
   }
 
@@ -286,6 +319,25 @@ export class StagePanel {
       return;
     }
 
+    if (message.type === 'SELECT_CVA_TARGET') {
+      const meta = StagePanel.getActiveMetadata();
+      if (!meta) return;
+      const cvaTarget = message.payload;
+      const target: TargetRef = cvaTarget ? { cvaTarget } : {};
+      StagePanel._setTarget(target, meta);
+      if (cvaTarget) {
+        StagePanel._stageState = {
+          ...StagePanel._stageState,
+          selectedVariants: {
+            ...StagePanel._stageState.selectedVariants,
+            [cvaTarget.group]: cvaTarget.key,
+          },
+        };
+      }
+      StagePanel.syncAll();
+      return;
+    }
+
     if (message.type === 'MUTATE_CLASSES') {
       const { className } = message.payload;
       const doc = StagePanel._activeDocument;
@@ -313,16 +365,44 @@ export class StagePanel {
       StagePanel.syncAll();
       return;
     }
+
+    if (message.type === 'MUTATE_CVA_VARIANT') {
+      const { variantGroup, variantKey, className } = message.payload;
+      const doc = StagePanel._activeDocument;
+      const result = doc
+        ? await StagePanel._applyPlan(
+            doc,
+            planCvaVariantMutation(doc.getText(), variantGroup, variantKey, className)
+          )
+        : { ok: false, message: 'No active component file' };
+      if (result.ok) {
+        StagePanel._stageState = {
+          ...StagePanel._stageState,
+          cvaTarget: { group: variantGroup, key: variantKey },
+          selectedVariants: {
+            ...StagePanel._stageState.selectedVariants,
+            [variantGroup]: variantKey,
+          },
+          harmonicsClass: className,
+          baselineClass: className,
+        };
+      }
+      StagePanel.broadcast({ type: 'MUTATION_RESULT', payload: { ...result, kind: 'variant' } });
+      StagePanel.syncAll();
+      return;
+    }
   }
 
   private static _setTarget(target: TargetRef, meta: ComponentMetadata) {
     const current: TargetRef = {
       targetElement: StagePanel._stageState.targetElement,
       targetIndex: StagePanel._stageState.targetIndex,
+      cvaTarget: StagePanel._stageState.cvaTarget,
     };
     const base: StageState = { ...StagePanel._stageState };
     delete base.targetElement;
     delete base.targetIndex;
+    delete base.cvaTarget;
     StagePanel._stageState = reconcile(
       { ...base, ...target },
       fileClassFor(meta.cva, meta.elements ?? [], target),

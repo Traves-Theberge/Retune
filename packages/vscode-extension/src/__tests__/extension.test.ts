@@ -55,6 +55,7 @@ function loadExtension() {
         return { dispose: () => {} };
       },
       onDidChangeActiveTextEditor: () => ({ dispose: () => {} }),
+      onDidChangeTextEditorSelection: () => ({ dispose: () => {} }),
       createWebviewPanel: () => ({
         webview: {
           html: '',

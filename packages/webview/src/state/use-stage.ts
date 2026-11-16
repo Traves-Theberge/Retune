@@ -45,6 +45,8 @@ export interface StageStore {
   patchStage(patch: Partial<StageState>): void;
   patchConfig(patch: Partial<RetuneExtensionConfig>): void;
   selectElement(ref: ElementRef | null): void;
+  selectCvaTarget?(target: { group: string; key: string } | null): void;
+  saveCvaVariant?(group: string, key: string, className?: string): void;
   openStage(openMode?: StageOpenMode, tab?: StageTabId): void;
   notify(message: string, tone?: ToastTone): void;
 }
@@ -183,10 +185,81 @@ export function useStage(): StageStore {
     (ref: ElementRef | null) => {
       host.post({ type: 'SELECT_ELEMENT', payload: ref });
       if (host.kind === 'standalone') {
-        patchStage({ targetElement: ref?.name, targetIndex: ref?.index });
+        const cls = ref
+          ? modelRef.current.meta?.elements?.filter((el) => el.name === ref.name)[ref.index]?.className ?? ''
+          : modelRef.current.meta?.cva.hasCva
+          ? modelRef.current.meta.cva.baseClasses
+          : modelRef.current.meta?.elements?.[0]?.className ?? '';
+        patchStage({
+          targetElement: ref?.name,
+          targetIndex: ref?.index,
+          cvaTarget: null,
+          harmonicsClass: cls,
+          baselineClass: cls,
+        });
       }
     },
     [host, patchStage],
+  );
+
+  const selectCvaTarget = useCallback(
+    (target: { group: string; key: string } | null) => {
+      host.post({ type: 'SELECT_CVA_TARGET', payload: target });
+      if (host.kind === 'standalone') {
+        const meta = modelRef.current.meta;
+        const cls = target
+          ? meta?.cva.variantClasses?.[target.group]?.[target.key] ?? ''
+          : meta?.cva.baseClasses ?? '';
+        patchStage({
+          targetElement: undefined,
+          targetIndex: undefined,
+          cvaTarget: target,
+          selectedVariants: target
+            ? { ...modelRef.current.stage.selectedVariants, [target.group]: target.key }
+            : modelRef.current.stage.selectedVariants,
+          harmonicsClass: cls,
+          baselineClass: cls,
+        });
+      }
+    },
+    [host, patchStage],
+  );
+
+  const saveCvaVariant = useCallback(
+    (group: string, key: string, className?: string) => {
+      const classes = className ?? modelRef.current.stage.harmonicsClass;
+      if (host.kind === 'vscode') {
+        host.post({
+          type: 'MUTATE_CVA_VARIANT',
+          payload: { variantGroup: group, variantKey: key, className: classes },
+        });
+        return;
+      }
+      const curMeta = modelRef.current.meta;
+      if (!curMeta) return;
+      const existingOpts = curMeta.cva.variants[group] ?? [];
+      const nextOpts = existingOpts.includes(key) ? existingOpts : [...existingOpts, key];
+      const nextMeta = {
+        ...curMeta,
+        cva: {
+          ...curMeta.cva,
+          variants: { ...curMeta.cva.variants, [group]: nextOpts },
+          variantClasses: {
+            ...curMeta.cva.variantClasses,
+            [group]: { ...(curMeta.cva.variantClasses?.[group] ?? {}), [key]: classes },
+          },
+        },
+      };
+      dispatch({ type: 'host', now: Date.now(), message: { type: 'SYNC_COMPONENT', payload: nextMeta } });
+      patchStage({
+        cvaTarget: { group, key },
+        selectedVariants: { ...modelRef.current.stage.selectedVariants, [group]: key },
+        harmonicsClass: classes,
+        baselineClass: classes,
+      });
+      notify(`Saved variant ${group}.${key}`, 'success');
+    },
+    [host, notify, patchStage],
   );
 
   const openStage = useCallback(
@@ -222,6 +295,8 @@ export function useStage(): StageStore {
     patchStage,
     patchConfig,
     selectElement,
+    selectCvaTarget,
+    saveCvaVariant,
     openStage,
     notify,
   };

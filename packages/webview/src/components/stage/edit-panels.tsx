@@ -21,7 +21,7 @@ export function availablePanels(hasVariants: boolean): typeof PANELS {
 }
 
 export function EditPanel({ kind, store, onDone }: { kind: PanelKind; store: StageStore; onDone: () => void }) {
-  const ed = createClassEditor(store.stage.harmonicsClass, store.setClasses);
+  const ed = createClassEditor(store.stage.harmonicsClass, store.setClasses, store.stage.pseudoState ?? 'none');
   const cva = store.meta?.cva;
   const hasVariants = Boolean(cva?.hasCva && cva && Object.keys(cva.variants).length > 0);
 
@@ -100,6 +100,9 @@ export function EditPanel({ kind, store, onDone }: { kind: PanelKind; store: Sta
           selected={store.stage.selectedVariants}
           onSelect={store.selectVariant}
           onSetDefault={store.commitVariant}
+          editingTarget={store.stage.cvaTarget}
+          onEditVariant={store.selectCvaTarget}
+          onSaveNewVariant={(group, key) => store.saveCvaVariant?.(group, key, store.stage.harmonicsClass)}
         />
       ) : (
         <p className="text-xs text-muted">No cva() variants in this component.</p>

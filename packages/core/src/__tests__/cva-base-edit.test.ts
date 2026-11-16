@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeCvaBaseEdit, mutateCvaBase } from '../ast/jsx-mutator';
+import { computeCvaBaseEdit, computeCvaVariantEdit, mutateCvaBase, mutateCvaVariant } from '../ast/jsx-mutator';
 import { extractCvaMetadata } from '../ast/cva-extractor';
 
 const SRC = `// keep
@@ -48,5 +48,39 @@ describe('final-review regressions: single cva source of truth', () => {
     const src = 'const b = cva(`inline-flex px-4`, {});';
     expect(extractCvaMetadata(src).baseClasses).toBe('inline-flex px-4');
     expect(mutateCvaBase(src, 'inline-flex px-[12px]')).toBe('const b = cva(`inline-flex px-[12px]`, {});');
+  });
+});
+
+describe('computeCvaVariantEdit', () => {
+  const src = `const b = cva('base', {
+  variants: {
+    variant: {
+      default: 'bg-indigo-600 text-white',
+      ghost: 'hover:bg-zinc-800',
+    },
+    size: {
+      sm: 'h-8 px-3',
+    },
+  },
+  defaultVariants: { variant: 'default', size: 'sm' },
+});`;
+
+  it('replaces classes for an existing variant key while keeping quotes', () => {
+    const out = mutateCvaVariant(src, 'variant', 'ghost', 'bg-transparent text-zinc-200');
+    expect(out).toContain("ghost: 'bg-transparent text-zinc-200',");
+    expect(out).toContain("default: 'bg-indigo-600 text-white',");
+  });
+
+  it('adds a new named variant key to an existing group without disturbing formatting', () => {
+    const out = mutateCvaVariant(src, 'size', 'xl', 'h-12 px-8 text-base');
+    expect(out).toContain('xl: "h-12 px-8 text-base"');
+    const meta = extractCvaMetadata(out);
+    expect(meta.variants.size).toEqual(['sm', 'xl']);
+    expect(meta.variantClasses?.size?.xl).toBe('h-12 px-8 text-base');
+  });
+
+  it('returns null when the group does not exist or cva() is missing', () => {
+    expect(computeCvaVariantEdit(src, 'missing', 'a', 'p-2')).toBeNull();
+    expect(computeCvaVariantEdit('export const X = () => <div/>;', 'variant', 'a', 'p-2')).toBeNull();
   });
 });

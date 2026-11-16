@@ -1,4 +1,4 @@
-import type { ElementInfo } from '../ast/jsx-mutator';
+import type { ElementInfo, PreviewNode } from '../ast/jsx-mutator';
 
 export interface CvaVariantMap {
   [variantGroup: string]: string[];
@@ -41,7 +41,10 @@ export interface ComponentMetadata {
   props: PropDefinition[];
   rawSource: string;
   elements?: ElementInfo[];
+  previewTree?: PreviewNode | null;
 }
+
+export type PseudoStateMode = 'none' | 'hover' | 'focus' | 'active';
 
 export interface StageState {
   targetElement?: string;
@@ -50,6 +53,9 @@ export interface StageState {
   harmonicsClass: string;
   baselineClass: string;
   targetIndex?: number;
+  cvaTarget?: { group: string; key: string } | null;
+  pseudoState?: PseudoStateMode;
+  matrixMode?: boolean;
   viewport: ViewportPreset;
   showGrid: boolean;
   activeTab: StageTabId;
@@ -64,7 +70,9 @@ export type WebviewMessage =
   | { type: 'READY' }
   | { type: 'MUTATE_CLASSES'; payload: { className: string } }
   | { type: 'SELECT_ELEMENT'; payload: { name: string; index: number } | null }
+  | { type: 'SELECT_CVA_TARGET'; payload: { group: string; key: string } | null }
   | { type: 'MUTATE_VARIANT'; payload: { variantGroup: string; variantValue: string } }
+  | { type: 'MUTATE_CVA_VARIANT'; payload: { variantGroup: string; variantKey: string; className: string } }
   | { type: 'UPDATE_PROP_VALUE'; payload: { propName: string; value: string | boolean | number } }
   | { type: 'UPDATE_STAGE_STATE'; payload: Partial<StageState> }
   | { type: 'UPDATE_CONFIG'; payload: Partial<RetuneExtensionConfig> }

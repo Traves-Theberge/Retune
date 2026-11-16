@@ -1,5 +1,5 @@
 import React from 'react';
-import type { StageOpenMode } from '@retune/core';
+import type { PseudoStateMode, StageOpenMode } from '@retune/core';
 import type { StageStore } from '../../state/use-stage';
 import { splitClasses } from '../../lib/arbitrary-style';
 import { BG_TOKENS, GAP, HEIGHT, PX, PY, RADIUS, TEXT_SIZE, createClassEditor } from '../controls';
@@ -20,11 +20,19 @@ const TOGGLE_OPTIONS = [
   { id: 'on', label: 'On' },
 ];
 
+const STATE_OPTIONS: { id: PseudoStateMode; label: string }[] = [
+  { id: 'none', label: 'base' },
+  { id: 'hover', label: ':hover' },
+  { id: 'focus', label: ':focus' },
+  { id: 'active', label: ':active' },
+];
+
 export function SidebarView({ store, embedded }: { store: StageStore; embedded?: boolean }) {
   const { meta, stage, config, dirty } = store;
   const classes = stage.harmonicsClass;
+  const activeState: PseudoStateMode = stage.pseudoState ?? 'none';
   const tokens = splitClasses(classes);
-  const ed = createClassEditor(classes, store.setClasses);
+  const ed = createClassEditor(classes, store.setClasses, activeState);
   const props = meta?.props?.filter((p) => p.name !== 'label') ?? [];
   const fileName = meta?.filePath ? meta.filePath.split(/[\\/]/).pop() : '';
 
@@ -126,11 +134,21 @@ export function SidebarView({ store, embedded }: { store: StageStore; embedded?:
                   selected={stage.selectedVariants}
                   onSelect={store.selectVariant}
                   onSetDefault={store.commitVariant}
+                  editingTarget={stage.cvaTarget}
+                  onEditVariant={store.selectCvaTarget}
+                  onSaveNewVariant={(group, newKey) => store.saveCvaVariant?.(group, newKey, classes)}
                 />
               </Section>
             )}
 
             <Section title="Layout">
+              <Row label="state">
+                <Segmented
+                  options={STATE_OPTIONS}
+                  active={activeState}
+                  onPick={(id) => store.patchStage({ pseudoState: id as PseudoStateMode })}
+                />
+              </Row>
               {ed.lenRow('pad X', 'px', PX, 0, 64)}
               {ed.lenRow('pad Y', 'py', PY, 0, 48)}
               {ed.lenRow('gap', 'gap', GAP, 0, 32)}

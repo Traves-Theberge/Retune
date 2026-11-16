@@ -32,6 +32,14 @@ export interface ElementInfo {
   className: string;
 }
 
+export interface PreviewNode {
+  tag: string;
+  elementIndex: number;
+  className: string;
+  text?: string;
+  children: PreviewNode[];
+}
+
 const CLASS_HELPERS = new Set(['cn', 'clsx', 'classnames', 'classNames', 'twMerge', 'cx']);
 
 function parseSource(source: string) {
@@ -320,17 +328,25 @@ export function mutateDefaultVariant(source: string, variantGroup: string, varia
 }
 
 /** Compute the minimal edit that replaces the base class literal passed to the first `cva()` call. */
+function findFirstCvaCall(program: t.Program): t.CallExpression | undefined {
+  let cvaCall: t.CallExpression | undefined;
+  walk(program, (n) => {
+    if (cvaCall || !t.isCallExpression(n)) return;
+    const callee = n.callee;
+    const isCva =
+      (t.isIdentifier(callee) && callee.name === 'cva') ||
+      (t.isMemberExpression(callee) &&
+        !callee.computed &&
+        t.isIdentifier(callee.property) &&
+        callee.property.name === 'cva');
+    if (isCva) cvaCall = n;
+  });
+  return cvaCall;
+}
+
 export function computeCvaBaseEdit(source: string, newBase: string): TextEdit | null {
   try {
-    let cvaCall: t.CallExpression | undefined;
-    walk(parseSource(source).program, (n) => {
-      if (cvaCall || !t.isCallExpression(n)) return;
-      const callee = n.callee;
-      const isCva =
-        (t.isIdentifier(callee) && callee.name === 'cva') ||
-        (t.isMemberExpression(callee) && !callee.computed && t.isIdentifier(callee.property) && callee.property.name === 'cva');
-      if (isCva) cvaCall = n;
-    });
+    const cvaCall = findFirstCvaCall(parseSource(source).program);
     const first = cvaCall?.arguments[0];
     if (!first || !(t.isStringLiteral(first) || isPlainTemplate(first))) return null;
     const quote = quoteFor(source, first);
@@ -342,4 +358,156 @@ export function computeCvaBaseEdit(source: string, newBase: string): TextEdit | 
 
 export function mutateCvaBase(source: string, newBase: string): string {
   return applyEdits(source, computeCvaBaseEdit(source, newBase));
+}
+
+function propKeyName(key: t.Node): string {
+  if (t.isIdentifier(key)) return key.name;
+  if (t.isStringLiteral(key)) return key.value;
+  return '';
+}
+
+function formatKey(key: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
+/**
+ * Compute the minimal edit that updates or adds `variants[variantGroup][variantKey]`
+ * in the first `cva()` call.
+ */
+export function computeCvaVariantEdit(
+  source: string,
+  variantGroup: string,
+  variantKey: string,
+  newClasses: string
+): TextEdit | null {
+  try {
+    const cvaCall = findFirstCvaCall(parseSource(source).program);
+    const configArg = cvaCall?.arguments[1];
+    if (!configArg || !t.isObjectExpression(configArg)) return null;
+
+    const variantsProp = configArg.properties.find(
+      (p): p is t.ObjectProperty => t.isObjectProperty(p) && propKeyName(p.key) === 'variants'
+    );
+    if (!variantsProp || !t.isObjectExpression(variantsProp.value)) return null;
+
+    const groupProp = variantsProp.value.properties.find(
+      (p): p is t.ObjectProperty => t.isObjectProperty(p) && propKeyName(p.key) === variantGroup
+    );
+    if (!groupProp || !t.isObjectExpression(groupProp.value)) return null;
+
+    const groupObj = groupProp.value;
+    const existing = groupObj.properties.find(
+      (p): p is t.ObjectProperty => t.isObjectProperty(p) && propKeyName(p.key) === variantKey
+    );
+
+    if (existing) {
+      if (!(t.isStringLiteral(existing.value) || isPlainTemplate(existing.value))) return null;
+      const quote = quoteFor(source, existing.value);
+      return {
+        start: existing.value.start!,
+        end: existing.value.end!,
+        text: `${quote}${escapeFor(newClasses, quote)}${quote}`,
+      };
+    }
+
+    const entry = `${formatKey(variantKey)}: "${escapeFor(newClasses, '"')}"`;
+    if (groupObj.properties.length > 0) {
+      const last = groupObj.properties[groupObj.properties.length - 1];
+      return { start: last.end!, end: last.end!, text: `, ${entry}` };
+    }
+    return { start: groupObj.start! + 1, end: groupObj.start! + 1, text: ` ${entry} ` };
+  } catch {
+    return null;
+  }
+}
+
+export function mutateCvaVariant(
+  source: string,
+  variantGroup: string,
+  variantKey: string,
+  newClasses: string
+): string {
+  return applyEdits(source, computeCvaVariantEdit(source, variantGroup, variantKey, newClasses));
+}
+
+function findPrimaryJsxRoot(program: t.Program): t.JSXElement | t.JSXFragment | null {
+  let root: t.JSXElement | t.JSXFragment | null = null;
+  // Prefer JSX returned by an exported declaration first
+  for (const stmt of program.body) {
+    if (t.isExportNamedDeclaration(stmt) || t.isExportDefaultDeclaration(stmt)) {
+      walk(stmt, (n) => {
+        if (!root && (t.isJSXElement(n) || t.isJSXFragment(n))) root = n;
+      });
+      if (root) return root;
+    }
+  }
+  walk(program, (n) => {
+    if (!root && (t.isJSXElement(n) || t.isJSXFragment(n))) root = n;
+  });
+  return root;
+}
+
+/** Extract a serializable JSX element hierarchy from the component for multi-element stage preview. */
+export function extractPreviewTree(source: string): PreviewNode | null {
+  try {
+    const program = parseSource(source).program;
+    const indexByOpening = new Map<t.JSXOpeningElement, number>();
+    const seen: Record<string, number> = {};
+    walk(program, (n) => {
+      if (t.isJSXOpeningElement(n)) {
+        const name = elementName(n);
+        const idx = seen[name] ?? 0;
+        seen[name] = idx + 1;
+        indexByOpening.set(n, idx);
+      }
+    });
+
+    const buildNode = (node: t.JSXElement): PreviewNode => {
+      const tag = elementName(node.openingElement) || 'div';
+      const elementIndex = indexByOpening.get(node.openingElement) ?? 0;
+      const className = staticClasses(node.openingElement);
+      const textParts: string[] = [];
+      const children: PreviewNode[] = [];
+
+      for (const child of node.children) {
+        if (t.isJSXText(child)) {
+          const collapsed = child.value.replace(/\s+/g, ' ').trim();
+          if (collapsed) textParts.push(collapsed);
+        } else if (t.isJSXExpressionContainer(child)) {
+          if (t.isStringLiteral(child.expression)) {
+            textParts.push(child.expression.value);
+          } else if (t.isIdentifier(child.expression) && child.expression.name !== 'children') {
+            // Preserve simple prop placeholder label? Better only if no child elements
+          }
+        } else if (t.isJSXElement(child)) {
+          children.push(buildNode(child));
+        } else if (t.isJSXFragment(child)) {
+          for (const fc of child.children) {
+            if (t.isJSXElement(fc)) children.push(buildNode(fc));
+          }
+        }
+      }
+
+      return {
+        tag,
+        elementIndex,
+        className,
+        ...(textParts.length > 0 ? { text: textParts.join(' ') } : {}),
+        children,
+      };
+    };
+
+    const root = findPrimaryJsxRoot(program);
+    if (!root) return null;
+    if (t.isJSXElement(root)) return buildNode(root);
+    const children: PreviewNode[] = [];
+    for (const fc of root.children) {
+      if (t.isJSXElement(fc)) children.push(buildNode(fc));
+    }
+    return children.length === 1
+      ? children[0]
+      : { tag: 'div', elementIndex: -1, className: '', children };
+  } catch {
+    return null;
+  }
 }

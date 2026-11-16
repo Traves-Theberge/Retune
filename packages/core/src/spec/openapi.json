@@ -70,6 +70,33 @@
                           "additionalProperties": { "type": "string" }
                         }
                       }
+                    },
+                    "props": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "type": { "type": "string" },
+                          "optional": { "type": "boolean" }
+                        }
+                      }
+                    },
+                    "elements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "line": { "type": "integer" },
+                          "column": { "type": "integer" },
+                          "className": { "type": "string" }
+                        }
+                      }
+                    },
+                    "previewTree": {
+                      "type": ["object", "null"],
+                      "description": "Hierarchical JSX element tree for multi-element stage rendering"
                     }
                   }
                 }
@@ -84,7 +111,7 @@
     },
     "/v1/components/mutate": {
       "post": {
-        "summary": "Mutate Component Tailwind Classes",
+        "summary": "Mutate Component Tailwind Classes or CVA Variants",
         "operationId": "mutateComponent",
         "requestBody": {
           "required": true,
@@ -92,7 +119,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["fileContent", "componentName", "className"],
+                "required": ["fileContent"],
                 "properties": {
                   "fileContent": {
                     "type": "string",
@@ -101,6 +128,32 @@
                   "componentName": {
                     "type": "string",
                     "description": "Target JSX component or element name"
+                  },
+                  "targetIndex": {
+                    "type": "integer",
+                    "description": "0-based occurrence index when multiple elements share a tag name"
+                  },
+                  "cvaBase": {
+                    "type": "boolean",
+                    "description": "When true, mutates the cva() base class string"
+                  },
+                  "cvaVariant": {
+                    "type": "object",
+                    "description": "When provided, updates or creates a named variant entry inside cva().variants",
+                    "properties": {
+                      "group": { "type": "string" },
+                      "key": { "type": "string" }
+                    },
+                    "required": ["group", "key"]
+                  },
+                  "defaultVariant": {
+                    "type": "object",
+                    "description": "When provided, updates defaultVariants[group] in cva()",
+                    "properties": {
+                      "group": { "type": "string" },
+                      "value": { "type": "string" }
+                    },
+                    "required": ["group", "value"]
                   },
                   "className": {
                     "type": "string",

@@ -9,26 +9,27 @@ Thank you for contributing to **Retune**! This document outlines the workspace s
    ```bash
    pnpm install
    ```
-3. Build all packages:
+3. Build all 6 packages:
    ```bash
    pnpm build
    ```
-4. Run unit and integration tests across all packages:
+4. Run unit and integration tests and typecheck across all packages:
    ```bash
-   pnpm test
+   pnpm test && pnpm lint
    ```
 
 ## Package Responsibilities
 
-- **`packages/core` (`@retune/core`)**: Keep this package free of VS Code or browser DOM dependencies so it can be shared cleanly across the HTTP daemon, MCP server, Webview, and Extension Host.
-- **`packages/engine` (`@retune/engine`)**: Houses the local HTTP daemon (`createRetuneDaemon`) and programmatic Vite sandbox server.
-- **`packages/webview` (`@retune/webview`)**: Houses the React 19 UI for both the **Editor Tab (`editor-tab`)** and **Activity Bar Sidebar (`sidebar`)** modes.
-- **`packages/mcp` (`@retune/mcp`)**: Houses the Model Context Protocol stdio server and tool handlers.
-- **`packages/vscode-extension` (`retune-vscode`)**: Houses the VS Code Extension Host activation logic, `StagePanel`, `RetuneSidebarProvider`, and `RetuneCodeLensProvider`.
+- **`packages/core` (`@retune/core`)**: Keep AST analyzers and splicers (`src/ast/*`) free of VS Code, Node `fs`, or browser DOM dependencies so they run cleanly in the HTTP daemon, MCP server, Extension Host, and Orca's in-frame browser bundle.
+- **`packages/engine` (`@retune/engine`)**: Houses the local HTTP daemon (`createRetuneDaemon`) and programmatic Vite sandbox resolver.
+- **`packages/webview` (`@retune/webview`)**: Houses the React 19 UI, Stage canvas, Inspector sidebar, host adapters (`vscode`, `orca`, `standalone`), and lazy-loaded Scalar API console. UI components must use semantic `--rt-*` token classes (`bg-panel`, `text-fg`, `border-line`, `bg-accent`) and font sizes `>= 11px` (enforced by `palette-sweep.test.ts`).
+- **`packages/mcp` (`@retune/mcp`)**: Houses the Model Context Protocol stdio server and AST tool handlers.
+- **`packages/orca-plugin` (`@retune/orca-plugin`)**: Format 2 (`sandboxed-ui`) Orca plugin manifest and offline HTML entry builder (`node scripts/build.mjs`). Keep this package free of local `node_modules` symlinks so `orca plugin inspect` and `orca plugin check` pass cleanly.
+- **`packages/vscode-extension` (`retune-vscode`)**: Houses the VS Code Extension Host activation logic, `StagePanel`, `RetuneSidebarProvider`, `RetuneCodeLensProvider`, and local VSIX packaging.
 
 ## Submitting Changes
 
-1. Add or update unit tests in `src/__tests__/` for any AST, daemon, or MCP change.
+1. Add or update unit tests in `src/__tests__/` for any AST, daemon, MCP, Webview, or Extension Host change.
 2. Verify that `pnpm build`, `pnpm test`, and `pnpm lint` pass with zero errors.
-3. Document user-facing changes in `CHANGELOG.md`.
-
+3. If modifying `packages/orca-plugin` or `@retune/webview`, also run `orca plugin validate packages/orca-plugin` and `orca plugin check packages/orca-plugin`.
+4. Document user-facing changes in `CHANGELOG.md`.

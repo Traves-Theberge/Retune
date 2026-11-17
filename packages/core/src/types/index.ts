@@ -42,6 +42,8 @@ export interface ComponentMetadata {
   rawSource: string;
   elements?: ElementInfo[];
   previewTree?: PreviewNode | null;
+  /** Scoped stylesheet extracted from sibling/imported CSS files in the component's project. */
+  workspaceCss?: string;
 }
 
 export type PseudoStateMode = 'none' | 'hover' | 'focus' | 'active';

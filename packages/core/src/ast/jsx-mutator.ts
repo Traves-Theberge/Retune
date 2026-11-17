@@ -1,5 +1,13 @@
 import { parse as babelParse } from '@babel/parser';
 import * as t from '@babel/types';
+import {
+  createPreviewExtractor,
+  type PreviewNode,
+  type PreviewTreeOptions,
+  type ResolvedImport,
+} from './preview-builder';
+
+export type { PreviewNode, PreviewTreeOptions, ResolvedImport };
 
 /**
  * Non-lossy source edits.
@@ -30,14 +38,6 @@ export interface ElementInfo {
   line: number;
   column: number;
   className: string;
-}
-
-export interface PreviewNode {
-  tag: string;
-  elementIndex: number;
-  className: string;
-  text?: string;
-  children: PreviewNode[];
 }
 
 const CLASS_HELPERS = new Set(['cn', 'clsx', 'classnames', 'classNames', 'twMerge', 'cx']);
@@ -430,87 +430,8 @@ export function mutateCvaVariant(
   return applyEdits(source, computeCvaVariantEdit(source, variantGroup, variantKey, newClasses));
 }
 
-function findPrimaryJsxRoot(program: t.Program): t.JSXElement | t.JSXFragment | null {
-  let root: t.JSXElement | t.JSXFragment | null = null;
-  // Prefer JSX returned by an exported declaration first
-  for (const stmt of program.body) {
-    if (t.isExportNamedDeclaration(stmt) || t.isExportDefaultDeclaration(stmt)) {
-      walk(stmt, (n) => {
-        if (!root && (t.isJSXElement(n) || t.isJSXFragment(n))) root = n;
-      });
-      if (root) return root;
-    }
-  }
-  walk(program, (n) => {
-    if (!root && (t.isJSXElement(n) || t.isJSXFragment(n))) root = n;
-  });
-  return root;
-}
-
 /** Extract a serializable JSX element hierarchy from the component for multi-element stage preview. */
-export function extractPreviewTree(source: string): PreviewNode | null {
-  try {
-    const program = parseSource(source).program;
-    const indexByOpening = new Map<t.JSXOpeningElement, number>();
-    const seen: Record<string, number> = {};
-    walk(program, (n) => {
-      if (t.isJSXOpeningElement(n)) {
-        const name = elementName(n);
-        const idx = seen[name] ?? 0;
-        seen[name] = idx + 1;
-        indexByOpening.set(n, idx);
-      }
-    });
-
-    const buildNode = (node: t.JSXElement): PreviewNode => {
-      const tag = elementName(node.openingElement) || 'div';
-      const elementIndex = indexByOpening.get(node.openingElement) ?? 0;
-      const className = staticClasses(node.openingElement);
-      const textParts: string[] = [];
-      const children: PreviewNode[] = [];
-
-      for (const child of node.children) {
-        if (t.isJSXText(child)) {
-          const collapsed = child.value.replace(/\s+/g, ' ').trim();
-          if (collapsed) textParts.push(collapsed);
-        } else if (t.isJSXExpressionContainer(child)) {
-          if (t.isStringLiteral(child.expression)) {
-            textParts.push(child.expression.value);
-          } else if (t.isIdentifier(child.expression) && child.expression.name !== 'children') {
-            // Preserve simple prop placeholder label? Better only if no child elements
-          }
-        } else if (t.isJSXElement(child)) {
-          children.push(buildNode(child));
-        } else if (t.isJSXFragment(child)) {
-          for (const fc of child.children) {
-            if (t.isJSXElement(fc)) children.push(buildNode(fc));
-          }
-        }
-      }
-
-      return {
-        tag,
-        elementIndex,
-        className,
-        ...(textParts.length > 0 ? { text: textParts.join(' ') } : {}),
-        children,
-      };
-    };
-
-    const root = findPrimaryJsxRoot(program);
-    if (!root) return null;
-    if (t.isJSXElement(root)) return buildNode(root);
-    const children: PreviewNode[] = [];
-    for (const fc of root.children) {
-      if (t.isJSXElement(fc)) children.push(buildNode(fc));
-    }
-    return children.length === 1
-      ? children[0]
-      : { tag: 'div', elementIndex: -1, className: '', children };
-  } catch {
-    return null;
-  }
-}
+export const extractPreviewTree = createPreviewExtractor(staticClasses);
 
 function containsJsx(node: t.Node): boolean {
   let found = false;

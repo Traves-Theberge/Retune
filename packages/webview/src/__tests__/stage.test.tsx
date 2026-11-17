@@ -101,4 +101,57 @@ describe('stage pieces', () => {
     );
     expect(matrixOut).toContain('Variant Matrix (15)');
   });
+
+  it('renders SVG illustrations, void form controls, and scoped workspaceCss without raw tag placeholders', () => {
+    const pageOut = html(
+      <Stage
+        store={store({
+          stage: { ...DEFAULT_STAGE_STATE, harmonicsClass: '', baselineClass: '' },
+          meta: {
+            ...DEMO_META,
+            componentName: 'LegalPage',
+            cva: { hasCva: false, variants: {}, defaultVariants: {}, baseClasses: '' },
+            workspaceCss: '.retune-preview-scope .legal-card { padding: 24px; }',
+            previewTree: {
+              tag: 'main',
+              elementIndex: 0,
+              className: 'legal-page',
+              children: [
+                {
+                  tag: 'svg',
+                  elementIndex: 1,
+                  className: '',
+                  attrs: { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor' },
+                  children: [{ tag: 'path', elementIndex: 2, className: '', attrs: { d: 'M5 12h14' }, children: [] }],
+                },
+                {
+                  tag: 'input',
+                  elementIndex: 3,
+                  className: 'field',
+                  attrs: { type: 'email', placeholder: 'you@example.com' },
+                  children: [],
+                },
+                {
+                  tag: 'span',
+                  elementIndex: 4,
+                  className: 'dot',
+                  children: [],
+                },
+              ],
+            },
+          },
+        })}
+        tone="dark"
+        comparing={false}
+        onToggleTone={noop}
+      />
+    );
+    expect(pageOut).toContain('retune-preview-scope');
+    expect(pageOut).toContain('<style>.retune-preview-scope .legal-card { padding: 24px; }</style>');
+    expect(pageOut).toContain('<svg viewBox="0 0 24 24"');
+    expect(pageOut).toContain('<path d="M5 12h14"');
+    expect(pageOut).toContain('<input type="email" placeholder="you@example.com"');
+    expect(pageOut).not.toContain('>path<');
+    expect(pageOut).not.toContain('>span<');
+  });
 });

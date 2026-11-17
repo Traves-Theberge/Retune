@@ -299,11 +299,13 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
 
   const publishSnapshot = () => {
     if (!orca.storage) return;
-    // Strip large rawSource before writing to plugin storage (Orca limits storage & panel payloads to 64 KiB).
+    // Strip large fields before writing to plugin storage (Orca limits storage & panel payloads to 64 KiB).
     const trimmedMeta = meta
       ? {
           ...meta,
           rawSource: meta.rawSource.length > 16384 ? '' : meta.rawSource,
+          previewTree: null,
+          workspaceCss: undefined,
         }
       : null;
     const snap: OrcaSnapshot = toJsonPayload({ meta: trimmedMeta, stage, problem, config });

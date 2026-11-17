@@ -1,8 +1,5 @@
 import http from 'node:http';
 import {
-  analyzeProps,
-  extractCvaMetadata,
-  extractPreviewTree,
   listElements,
   mutateClassName,
   mutateCvaBase,
@@ -10,6 +7,7 @@ import {
   mutateDefaultVariant,
   openApiSpec,
 } from '@retune/core';
+import { inspectComponentFile } from '../bundler/project-resolver';
 
 export function createRetuneDaemon(port = 49221) {
   const server = http.createServer((req, res) => {
@@ -39,13 +37,18 @@ export function createRetuneDaemon(port = 49221) {
       req.on('data', (chunk) => (body += chunk));
       req.on('end', () => {
         try {
-          const { fileContent } = JSON.parse(body);
-          const cva = extractCvaMetadata(fileContent);
-          const props = analyzeProps(fileContent);
-          const elements = listElements(fileContent);
-          const previewTree = extractPreviewTree(fileContent);
+          const { fileContent, filePath = '' } = JSON.parse(body);
+          const inspected = inspectComponentFile(fileContent, filePath);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ cva, props, elements, previewTree }));
+          res.end(
+            JSON.stringify({
+              cva: inspected.cva,
+              props: inspected.props,
+              elements: inspected.elements,
+              previewTree: inspected.previewTree,
+              ...(inspected.workspaceCss ? { workspaceCss: inspected.workspaceCss } : {}),
+            })
+          );
         } catch (err: any) {
           res.writeHead(422, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err.message }));

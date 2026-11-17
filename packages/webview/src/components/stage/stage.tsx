@@ -26,9 +26,43 @@ const TOOLBAR_PER_BUTTON = 72;
 const TOOLBAR_PADDING = 12;
 const TOOLBAR_HEIGHT = 32;
 const SAFE_HTML_TAGS = new Set([
-  'div', 'span', 'button', 'a', 'p', 'label', 'li', 'ul', 'ol',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article', 'nav', 'header', 'footer',
+  'main', 'aside', 'header', 'footer', 'nav', 'section', 'article',
+  'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'button', 'a', 'input', 'select', 'option', 'textarea', 'label',
+  'fieldset', 'legend', 'form', 'details', 'summary', 'dialog',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'small', 'strong', 'em', 'b', 'i', 'code', 'pre', 'time', 'figure', 'figcaption', 'hr', 'br', 'img',
+  'svg', 'g', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon',
 ]);
+const VOID_TAGS = new Set([
+  'input', 'img', 'hr', 'br', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon',
+]);
+const SVG_CHILD_TAGS = new Set([
+  'g', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon',
+]);
+const PAGE_ROOT_TAGS = new Set(['main', 'section', 'article', 'aside', 'form', 'dialog', 'nav']);
+
+function countTreeNodes(node: PreviewNode | null | undefined): number {
+  if (!node) return 0;
+  return 1 + node.children.reduce((sum, child) => sum + countTreeNodes(child), 0);
+}
+
+function toSafeDomProps(
+  attrs: Record<string, string | number | boolean> | undefined,
+  tag: string
+): Record<string, unknown> {
+  if (!attrs) return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'value') out.defaultValue = v;
+    else if (k === 'checked') out.defaultChecked = Boolean(v);
+    else if (k === 'href' && typeof v === 'string' && /^\s*javascript:/i.test(v)) out.href = '#';
+    else if (tag === 'img' && k === 'src') out.src = v;
+    else out[k] = v;
+  }
+  return out;
+}
 
 function sameRect(a: Rect | null, b: Rect): boolean {
   return !!a && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
@@ -215,41 +249,80 @@ export function Stage({
     dragRef.current = { axis, startPos: axis === 'width' ? e.clientX : e.clientY, baseVal };
   };
 
-  const renderTree = (node: PreviewNode, isRoot = false): React.ReactNode => {
+  const renderTree = (node: PreviewNode, isRoot = false, siblingIdx = 0): React.ReactNode => {
     const isTarget =
       node.elementIndex >= 0 &&
       (stage.targetElement
         ? stage.targetElement === node.tag && (stage.targetIndex ?? 0) === node.elementIndex
         : isRoot);
     const El = renderTagForNode(node.tag, meta?.componentName);
+    const elTag = String(El);
     const nodeRawClasses = isTarget ? rawClasses : node.className;
     const nodeClasses = resolveSimulatedClasses(nodeRawClasses, pseudoState);
-    const nodeStyle = parseArbitraryStyle(nodeRawClasses, pseudoState);
+    const nodeStyle = {
+      ...(node.style ?? {}),
+      ...parseArbitraryStyle(nodeRawClasses, pseudoState),
+    };
+    const domProps = toSafeDomProps(node.attrs, elTag);
+    const isSvgPrimitive = SVG_CHILD_TAGS.has(elTag);
+    const isVoid = VOID_TAGS.has(elTag);
+    const key = `${node.tag}-${node.elementIndex}-${siblingIdx}`;
+
+    const commonProps: Record<string, unknown> = {
+      ...domProps,
+      className: `${nodeClasses} ${
+        isTarget && !isRoot ? 'outline outline-1 outline-accent/80 outline-offset-2' : ''
+      } ${disabled && isRoot ? 'opacity-50' : ''}`.trim(),
+      style: Object.keys(nodeStyle).length > 0 ? nodeStyle : undefined,
+    };
+
+    if (!isSvgPrimitive) {
+      commonProps.onClick = (e: React.MouseEvent) => {
+        if (elTag === 'a') e.preventDefault();
+        e.stopPropagation();
+        if (node.elementIndex >= 0) {
+          store.selectElement({ name: node.tag, index: node.elementIndex });
+        }
+        setSelected(true);
+        setMenu(null);
+      };
+      if (elTag === 'form') {
+        commonProps.onSubmit = (e: React.FormEvent) => e.preventDefault();
+      }
+    }
+
+    if (isVoid) {
+      return <El key={key} {...(commonProps as any)} />;
+    }
+
+    const leafFallback =
+      node.text !== undefined
+        ? isRoot && stage.propValues.label
+          ? String(stage.propValues.label)
+          : node.text
+        : isRoot && (elTag === 'button' || elTag === 'a')
+          ? label
+          : null;
 
     return (
-      <El
-        key={`${node.tag}-${node.elementIndex}`}
-        onClick={(e: React.MouseEvent) => {
-          e.stopPropagation();
-          if (node.elementIndex >= 0) {
-            store.selectElement({ name: node.tag, index: node.elementIndex });
-          }
-          setSelected(true);
-          setMenu(null);
-        }}
-        className={`transition-all ${nodeClasses} ${
-          isTarget && !isRoot ? 'outline outline-1 outline-accent/80 outline-offset-2' : ''
-        } ${disabled && isRoot ? 'opacity-50' : ''}`}
-        style={nodeStyle}
-      >
+      <El key={key} {...(commonProps as any)}>
         {node.children.length > 0
-          ? node.children.map((child) => renderTree(child, false))
-          : node.text || (isRoot ? label : node.tag)}
+          ? node.children.map((child, idx) => renderTree(child, false, idx))
+          : leafFallback}
       </El>
     );
   };
 
-  const useTreePreview = Boolean(meta?.previewTree && meta.previewTree.children.length > 0);
+  const useTreePreview = Boolean(meta?.previewTree);
+  const treeNodeCount = countTreeNodes(meta?.previewTree);
+  const isRichLayout =
+    useTreePreview &&
+    Boolean(
+      treeNodeCount > 4 ||
+        (meta?.previewTree &&
+          (PAGE_ROOT_TAGS.has(meta.previewTree.tag) ||
+            (meta.previewTree.tag === 'div' && meta.previewTree.children.length > 0)))
+    );
   const matrixCombos = matrixMode && meta?.cva ? buildVariantMatrix(meta.cva) : [];
   const a11ySmall = anchor ? isSmallTouchTarget(anchor.width, anchor.height) : false;
 
@@ -286,7 +359,11 @@ export function Stage({
 
       <div
         ref={frameRef}
-        className={`relative flex min-h-[280px] items-center justify-center rounded-2xl border p-10 shadow-2xl transition-all duration-150 ${frameWidth} ${
+        className={`relative flex rounded-2xl border shadow-2xl transition-all duration-150 ${frameWidth} ${
+          isRichLayout && !matrixMode
+            ? 'max-h-[calc(100vh-160px)] min-h-[320px] items-start justify-start overflow-auto p-5'
+            : 'min-h-[280px] items-center justify-center p-10'
+        } ${
           tone === 'light' ? 'border-frame-dark/10 bg-frame-light' : 'border-line bg-frame-dark'
         }`}
       >
@@ -345,20 +422,26 @@ export function Stage({
               setSelected(true);
               setMenu({ x: e.clientX, y: e.clientY });
             }}
-            className={`relative cursor-pointer rounded-md outline-offset-4 ${
+            className={`relative cursor-pointer rounded-md outline-offset-4 ${isRichLayout ? 'w-full' : ''} ${
               selected ? 'outline outline-2 outline-accent' : 'hover:outline hover:outline-1 hover:outline-accent/60'
             }`}
           >
-            {useTreePreview && meta?.previewTree ? (
-              renderTree(meta.previewTree, true)
-            ) : (
-              <Tag
-                className={`transition-all ${classes} ${disabled ? 'opacity-50' : ''}`}
-                style={{ ...parseArbitraryStyle(rawClasses, pseudoState), pointerEvents: 'none' }}
-              >
-                {label}
-              </Tag>
-            )}
+            <div
+              className={`retune-preview-scope ${isRichLayout ? 'w-full min-h-[260px]' : ''}`}
+              style={isRichLayout ? { transform: 'translateZ(0)' } : undefined}
+            >
+              {meta?.workspaceCss && <style>{meta.workspaceCss}</style>}
+              {useTreePreview && meta?.previewTree ? (
+                renderTree(meta.previewTree, true)
+              ) : (
+                <Tag
+                  className={`transition-all ${classes} ${disabled ? 'opacity-50' : ''}`}
+                  style={{ ...parseArbitraryStyle(rawClasses, pseudoState), pointerEvents: 'none' }}
+                >
+                  {label}
+                </Tag>
+              )}
+            </div>
 
             {/* Direct box-model drag handles when selected */}
             {selected && (

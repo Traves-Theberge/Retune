@@ -1,5 +1,9 @@
 import { describe, it, expect, afterAll } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { createRetuneDaemon } from '../server/daemon';
+import { inspectComponentFile, scopePreviewCss } from '../bundler/project-resolver';
 import type { AddressInfo } from 'node:net';
 
 describe('@retune/engine HTTP Daemon', () => {
@@ -80,6 +84,30 @@ export function Badge({ label }: BadgeProps) { return <div className="p-1"><span
     const data = await res.json();
     expect(data.success).toBe(true);
     expect(data.updatedContent).toContain('brand: "bg-purple-600 text-white"');
+  });
+
+  it('scopes project CSS and resolves relative barrel exports via inspectComponentFile', () => {
+    const scoped = scopePreviewCss(':root { --ink: #203b30; } body { margin: 0; } .hero-panel { min-height: 100dvh; }');
+    expect(scoped).toContain('@layer components');
+    expect(scoped).toContain('.retune-preview-scope{');
+    expect(scoped).toContain('.retune-preview-scope .hero-panel');
+    expect(scoped).toContain('100%');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'retune-proj-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'styles.css'), '.panel-box { border-radius: 16px; }');
+      fs.writeFileSync(path.join(tmpDir, 'Inner.tsx'), 'export function Inner() { return <section className="panel-box"><h2>Inner Page</h2></section>; }');
+      const barrelPath = path.join(tmpDir, 'Index.tsx');
+      const barrelSrc = `export { Inner as Page } from './Inner';`;
+      fs.writeFileSync(barrelPath, barrelSrc);
+
+      const meta = inspectComponentFile(barrelSrc, barrelPath, 'Index');
+      expect(meta.previewTree?.tag).toBe('section');
+      expect(meta.previewTree?.className).toBe('panel-box');
+      expect(meta.workspaceCss).toContain('.retune-preview-scope .panel-box');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

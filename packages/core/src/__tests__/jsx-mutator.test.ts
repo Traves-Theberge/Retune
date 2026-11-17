@@ -125,6 +125,65 @@ describe('extractPreviewTree', () => {
     expect(tree?.children[1].elementIndex).toBe(1);
     expect(tree?.children[2].className).toBe('px-3 py-1');
   });
+
+  it('prefers the main page return over local JSX variables and early guards', () => {
+    const src = `
+      import React, { useState } from 'react';
+      function Sidebar({ page }: { page: string }) {
+        return <aside className="sidebar">{(['Today', 'Tasks'] as const).map((n) => <button className={page === n ? 'nav-item selected' : 'nav-item'} key={n}>{n}</button>)}</aside>;
+      }
+      export function Page({ ready }: { ready: boolean }) {
+        const [tab] = useState('Today');
+        const banner = <div className="banner">Notice</div>;
+        if (!ready) return <main className="loading"><p>Loading</p></main>;
+        return (
+          <div className="app-shell">
+            <Sidebar page={tab} />
+            {tab === 'Today' && <section className="hero"><h1>Dashboard</h1>{banner}</section>}
+            {tab === 'Tasks' && <section className="tasks"><h1>Tasks</h1></section>}
+          </div>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(src);
+    expect(tree?.tag).toBe('div');
+    expect(tree?.className).toBe('app-shell');
+    const serialized = JSON.stringify(tree);
+    expect(serialized).toContain('Dashboard');
+    expect(serialized).toContain('Notice');
+    expect(serialized).toContain('nav-item selected');
+    expect(serialized).not.toContain('>Tasks<');
+  });
+
+  it('expands SVGs with constant colors, spread props, and local helper components', () => {
+    const src = `
+      const ink = '#244b3c';
+      const iconProps = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor' };
+      function Dot({ x }: { x: number }) { return <circle cx={x} cy="12" r="4" fill={ink} />; }
+      export function Art() {
+        return <svg {...iconProps}><path d="M5 12h14" /><Dot x={8} /></svg>;
+      }
+    `;
+    const tree = extractPreviewTree(src);
+    expect(tree?.tag).toBe('svg');
+    expect(tree?.attrs?.viewBox).toBe('0 0 24 24');
+    expect(tree?.children[0]?.tag).toBe('path');
+    expect(tree?.children[0]?.attrs?.d).toBe('M5 12h14');
+    expect(tree?.children[1]?.tag).toBe('circle');
+    expect(tree?.children[1]?.attrs?.fill).toBe('#244b3c');
+    expect(tree?.children[1]?.attrs?.cx).toBe(8);
+  });
+
+  it('resolves re-export barrel files and cross-file imports when resolveImport is supplied', () => {
+    const barrel = `export { Hub as SettingsPage } from './Hub';`;
+    const hub = `export function Hub() { return <section className="hub"><h2>Connections</h2></section>; }`;
+    const tree = extractPreviewTree(barrel, {
+      resolveImport: (spec) => (spec === './Hub' ? hub : null),
+    });
+    expect(tree?.tag).toBe('section');
+    expect(tree?.elementIndex).toBe(-1);
+    expect(JSON.stringify(tree)).toContain('Connections');
+  });
 });
 
 describe('extractComponentName', () => {

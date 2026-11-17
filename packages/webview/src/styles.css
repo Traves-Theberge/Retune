@@ -143,3 +143,117 @@ body,
   background: color-mix(in srgb, var(--rt-muted) 55%, transparent);
 }
 
+/* Sensible semantic HTML defaults and fallback component styles inside The Stage preview scope */
+@layer base {
+  .retune-preview-scope {
+    font-size: 14px;
+    line-height: 1.5;
+    border-radius: 10px;
+  }
+  .retune-preview-scope [hidden] {
+    display: none;
+  }
+  .retune-preview-scope h1 {
+    font-size: 1.65rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0 0 0.45rem;
+  }
+  .retune-preview-scope h2 {
+    font-size: 1.2rem;
+    font-weight: 650;
+    line-height: 1.3;
+    margin: 0 0 0.35rem;
+  }
+  .retune-preview-scope h3,
+  .retune-preview-scope h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem;
+  }
+  .retune-preview-scope p {
+    margin: 0 0 0.5rem;
+  }
+  .retune-preview-scope button:not([class*="px-"]):not([class*="py-"]):not([class*="bg-"]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .retune-preview-scope input:not([type="checkbox"]):not([type="radio"]):not([class*="px-"]),
+  .retune-preview-scope select:not([class*="px-"]),
+  .retune-preview-scope textarea:not([class*="px-"]) {
+    display: block;
+    width: 100%;
+    padding: 0.45rem 0.65rem;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+    background: color-mix(in srgb, currentColor 4%, transparent);
+    color: inherit;
+    font-size: 0.85rem;
+  }
+  .retune-preview-scope label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .retune-preview-scope fieldset {
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 10px;
+    padding: 0.75rem;
+  }
+  .retune-preview-scope legend {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0 0.35rem;
+  }
+  .retune-preview-scope svg {
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .retune-preview-scope .retune-component-stub {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    border: 1px dashed color-mix(in srgb, currentColor 28%, transparent);
+    font-size: 0.8rem;
+    opacity: 0.85;
+  }
+  .retune-preview-scope .paper,
+  .retune-preview-scope .card {
+    border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-radius: 14px;
+    padding: 1rem;
+  }
+  .retune-preview-scope .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+  }
+}
+
+@layer utilities {
+  .retune-preview-scope .app-shell > .sidebar {
+    position: sticky;
+    top: 0;
+    height: auto;
+    min-height: 100%;
+    align-self: stretch;
+  }
+  .retune-preview-scope .main-column {
+    margin-left: 0;
+  }
+}
+

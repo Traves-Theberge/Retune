@@ -1,10 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
-  extractCvaMetadata,
-  extractPreviewTree,
-  analyzeProps,
-  listElements,
   ComponentMetadata,
   FileProblem,
   StageState,
@@ -13,6 +9,7 @@ import {
   WebviewMessage,
   HostMessage,
 } from '@retune/core';
+import { inspectComponentFile } from '@retune/engine';
 import { getRetuneConfig, updateRetuneConfig } from '../config/extension-config';
 import { buildWebviewHtml, getWebviewDistDir } from './webview-html';
 import {
@@ -106,18 +103,8 @@ export class StagePanel {
     }
     try {
       const text = doc.getText();
-      const cvaMeta = extractCvaMetadata(text);
-      const props = analyzeProps(text);
       const componentName = path.basename(doc.fileName, path.extname(doc.fileName));
-      const meta: ComponentMetadata = {
-        componentName,
-        filePath: doc.fileName,
-        cva: cvaMeta,
-        props,
-        rawSource: text,
-        elements: listElements(text),
-        previewTree: extractPreviewTree(text),
-      };
+      const meta: ComponentMetadata = inspectComponentFile(text, doc.fileName, componentName);
       StagePanel._lastGood = { uri: doc.uri.toString(), meta };
       StagePanel._problem = null;
       return meta;

@@ -25,10 +25,16 @@ export interface OrcaDisposable {
   dispose(): void;
 }
 
+export type OrcaEditorContent =
+  | string
+  | Uint8Array
+  | { kind: 'text'; text: string }
+  | { kind: 'bytes'; bytes: ArrayBuffer };
+
 export interface OrcaEditorDocument {
   readonly version: number;
   readonly readOnly: boolean;
-  readonly content: string | Uint8Array;
+  readonly content: OrcaEditorContent;
 }
 
 export interface OrcaEditorSession<T = string> {
@@ -43,7 +49,7 @@ export interface OrcaEditorSession<T = string> {
 export interface OrcaDocumentApi {
   get(): Promise<OrcaEditorDocument>;
   onDidChange(handler: (document: OrcaEditorDocument) => void): OrcaDisposable;
-  applyEdit(edit: { baseVersion: number; content: string }): Promise<null>;
+  applyEdit(edit: { baseVersion: number; content: { kind: 'text'; text: string } | string }): Promise<null>;
   session?<T = string>(options?: {
     merge?: (base: T, outside: T, mine: T) => T;
     debounceMs?: number;
@@ -51,16 +57,16 @@ export interface OrcaDocumentApi {
 }
 
 export interface OrcaStorageApi {
-  get<T = unknown>(key: string): Promise<T | undefined>;
+  get<T = unknown>(key: string): Promise<T | null | undefined>;
   set(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<void>;
-  onDidChange(handler: (event: { key: string; newValue?: unknown }) => void): OrcaDisposable;
+  onDidChange(handler: (change: { key: string; newValue?: unknown }) => void): OrcaDisposable;
 }
 
 export interface OrcaSettingsApi {
   get<T = unknown>(key?: string): Promise<T>;
   set(key: string, value: unknown): Promise<void>;
-  onDidChange(handler: (event: { key: string; newValue?: unknown }) => void): OrcaDisposable;
+  onDidChange(handler: (change: { key: string; newValue?: unknown }) => void): OrcaDisposable;
 }
 
 export interface OrcaFrameApi {
@@ -95,9 +101,18 @@ const DEFAULT_CONFIG: RetuneExtensionConfig = {
   scalarLayout: 'modern',
 };
 
-function decodeContent(content: string | Uint8Array): string {
+function decodeContent(content: OrcaEditorContent): string {
   if (typeof content === 'string') return content;
-  return new TextDecoder().decode(content);
+  if (content instanceof Uint8Array) return new TextDecoder().decode(content);
+  if (content && typeof content === 'object') {
+    if (content.kind === 'text') return content.text;
+    if (content.kind === 'bytes') return new TextDecoder().decode(new Uint8Array(content.bytes));
+  }
+  return '';
+}
+
+function toJsonPayload<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function resolveElement(elements: ElementInfo[], name?: string, index = 0): ElementInfo | undefined {
@@ -212,11 +227,17 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
         emit({ type: 'SYNC_CONFIG', payload: cfg });
       }
       if (orca.storage) {
+        const storage = orca.storage;
         unsubs.push(
-          orca.storage.onDidChange((ev) => {
-            if (ev.key === SNAPSHOT_KEY && ev.newValue) {
+          storage.onDidChange((ev) => {
+            if (ev.key !== SNAPSHOT_KEY) return;
+            if (ev.newValue) {
               pushSnapshot(ev.newValue as OrcaSnapshot);
+              return;
             }
+            void storage.get<OrcaSnapshot>(SNAPSHOT_KEY).then((latest) => {
+              if (latest) pushSnapshot(latest);
+            });
           }),
         );
       }
@@ -236,7 +257,7 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
           void writeOrcaConfig(orca, message.payload);
         }
         const intent: OrcaIntent = { id: Date.now() + Math.random(), message };
-        void orca.storage?.set(INTENT_KEY, intent).catch(() => {});
+        void orca.storage?.set(INTENT_KEY, toJsonPayload(intent)).catch(() => {});
       },
       subscribe(listener) {
         listeners.add(listener);
@@ -285,7 +306,7 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
           rawSource: meta.rawSource.length > 16384 ? '' : meta.rawSource,
         }
       : null;
-    const snap: OrcaSnapshot = { meta: trimmedMeta, stage, problem, config };
+    const snap: OrcaSnapshot = toJsonPayload({ meta: trimmedMeta, stage, problem, config });
     void orca.storage.set(SNAPSHOT_KEY, snap).catch(() => {});
   };
 
@@ -339,7 +360,7 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
       session.change(updated);
       await session.flush().catch(() => {});
     } else {
-      await docApi.applyEdit({ baseVersion: docVersion, content: updated });
+      await docApi.applyEdit({ baseVersion: docVersion, content: { kind: 'text', text: updated } });
       docVersion += 1;
     }
     ingestSource(updated, false);
@@ -502,14 +523,20 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
         );
       }
       if (orca.storage) {
+        const storage = orca.storage;
         subs.push(
-          orca.storage.onDidChange((ev) => {
-            if (ev.key === INTENT_KEY && ev.newValue) {
-              const intent = ev.newValue as OrcaIntent;
-              if (intent.id > lastHandledIntentId) {
+          storage.onDidChange((ev) => {
+            if (ev.key !== INTENT_KEY) return;
+            const consume = (intent: OrcaIntent | null | undefined) => {
+              if (intent && intent.id > lastHandledIntentId) {
                 lastHandledIntentId = intent.id;
                 void handleMessage(intent.message);
               }
+            };
+            if (ev.newValue) {
+              consume(ev.newValue as OrcaIntent);
+            } else {
+              void storage.get<OrcaIntent>(INTENT_KEY).then(consume);
             }
           }),
         );

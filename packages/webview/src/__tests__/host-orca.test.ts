@@ -4,19 +4,20 @@ import { createOrcaHost, type OrcaFrameApi } from '../lib/host-orca';
 
 function createMockStorage() {
   const store = new Map<string, unknown>();
-  const listeners = new Set<(ev: { key: string; newValue?: unknown }) => void>();
+  const listeners = new Set<(change: { key: string }) => void>();
   return {
     async get<T>(key: string) {
-      return store.get(key) as T | undefined;
+      return (store.get(key) as T | undefined) ?? null;
     },
     async set(key: string, value: unknown) {
       store.set(key, value);
-      for (const l of listeners) l({ key, newValue: value });
+      // Mirror Orca's real DataChange payload ({ key } only, without newValue)
+      for (const l of listeners) l({ key });
     },
     async delete(key: string) {
       store.delete(key);
     },
-    onDidChange(handler: (ev: { key: string; newValue?: unknown }) => void) {
+    onDidChange(handler: (change: { key: string }) => void) {
       listeners.add(handler);
       return { dispose: () => listeners.delete(handler) };
     },

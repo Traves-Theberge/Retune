@@ -1,6 +1,8 @@
 node_modules/
 dist/
 webview-dist/
+packages/orca-plugin/webview/
+.orca/
 .turbo/
 *.vsix
 .vsix-staging/

@@ -1,4 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
+import { openApiSpec } from '@retune/core';
 import { Stage } from './components/stage/stage';
 import { SidebarView } from './components/sidebar/sidebar-view';
 import { StageHeader } from './components/stage-header';
@@ -126,8 +127,8 @@ export function App() {
                 <LazyScalarApi
                   configuration={
                     {
-                      url: `http://127.0.0.1:${config.daemonPort}/v1/openapi.json`,
-                      spec: { url: `http://127.0.0.1:${config.daemonPort}/v1/openapi.json` },
+                      content: openApiSpec,
+                      spec: { content: openApiSpec },
                       darkMode: isDark,
                       layout: config.scalarLayout,
                     } as any

@@ -9,6 +9,10 @@
       "dependsOn": ["^build", "@retune/webview#build"],
       "outputs": ["dist/**", "webview-dist/**"]
     },
+    "@retune/orca-plugin#build": {
+      "dependsOn": ["^build", "@retune/webview#build"],
+      "outputs": ["webview/**"]
+    },
     "dev": {
       "cache": false,
       "persistent": true

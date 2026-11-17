@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+
+- **Orca (`onorca.dev`) plugin (`packages/orca-plugin`)**: Format 2 (`sandboxed-ui`) plugin contributing a **Retune** custom editor for `.tsx`/`.jsx` files, **Retune Inspector** right-sidebar panel, `--orca-*` theme token mapping, offline bundled OpenAPI spec for Scalar, and in-frame Babel AST analysis/edits via `createOrcaHost` + `extractComponentName`.
 - **Targeted edits**: Edits go to the selected element (the Nth JSX element with an exact name), to the component root (the `cva()` base classes when present), or directly inside any named `cva().variants[group][key]` entry (`computeCvaVariantEdit`). Class changes are written as minimal text splices (`TextEdit`).
 - **New Variant extraction (`+` in `VariantPicker`)**: Save tuned Stage/Sidebar classes directly into `cva().variants[group]` as a brand-new named variant key (`MUTATE_CVA_VARIANT`) or switch between base and variant editing (`SELECT_CVA_TARGET`).
 - **Multi-element `PreviewNode` tree**: `extractPreviewTree` parses the component's returned JSX hierarchy so nested child elements render interactively on the Stage and select directly on click.
@@ -26,11 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Accessible controls**: Visible focus rings, `aria-label` and `title` on icon-only buttons, `lucide-react` icons at 14px, and scrubbable numeric controls with keyboard nudging.
 
 ### Changed
+
 - **Theme tokens**: All UI colours come from `--rt-*` tokens mapped to `--vscode-*` variables, so the stage and sidebar follow the host theme.
 - **Content Security Policy and offline Tailwind**: The webview has a nonce-based CSP. `@tailwindcss/browser` is bundled, so arbitrary classes render offline and the CDN script is removed.
 - **Approximate preview**: The stage is labelled as an approximate, classes-only preview.
 
 ### Fixed
+
 - Exact element targeting: an offset at the start of a tag no longer matches the tag that ends right before it.
 - Consistent `cva()` handling: the first `cva()` call is read and written, and template-literal base classes are read.
 - Dynamic `className`: interpolated templates and the `[...].filter(Boolean).join(" ")` wrapper are read exactly as they are written, and Sync no longer nests wrappers.
@@ -41,11 +45,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A syntax error in the active file no longer throws out of the extension host.
 
 ### Removed
+
 - Protocol messages `SWITCH_TAB`, `THEME_CHANGED` and `MUTATION_SUCCESS`. `MUTATE_CLASSES` no longer carries `componentName`.
 
 ## [1.0.0] - 2026-11-09
 
 ### Added
+
 - **`@retune/core` (Non-Lossy AST Engine)**:
   - `extractCvaMetadata`: Extracts `cva(...)` identifier, base classes, variant groups, per-variant Tailwind class maps (`variantClasses`), and `defaultVariants` using `@babel/parser` and `@babel/traverse`.
   - `analyzeProps`: Parses TypeScript `*Props` interfaces into structured `PropDefinition` metadata (`name`, `type`, `optional`).
@@ -66,4 +72,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Registered Editor Tab commands (`retune.openStage`, `retune.openStageTab`, `retune.openStageSplit`, `retune.openScalarApi`), Editor Title Bar icons, Context Menu actions, and `Ctrl+Shift+R` (`Cmd+Shift+R`) keybinding.
   - Registered `RetuneCodeLensProvider` above `cva(...)` definitions in `.tsx` and `.jsx` files.
   - Full VS Code settings schema (`retune.daemon.port`, `retune.sandbox.port`, `retune.stage.openMode`, `retune.stage.defaultViewport`, `retune.stage.showGrid`, `retune.autoSyncActiveEditor`, `retune.scalar.layout`).
-

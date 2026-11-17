@@ -1,0 +1,11 @@
+{
+  "name": "@retune/orca-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node ../../node_modules/vitest/vitest.mjs run src",
+    "lint": "node ../../node_modules/typescript/bin/tsc --noEmit"
+  }
+}

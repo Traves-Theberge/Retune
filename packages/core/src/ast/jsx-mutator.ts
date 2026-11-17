@@ -511,3 +511,68 @@ export function extractPreviewTree(source: string): PreviewNode | null {
     return null;
   }
 }
+
+function containsJsx(node: t.Node): boolean {
+  let found = false;
+  walk(node, (n) => {
+    if (!found && (t.isJSXElement(n) || t.isJSXFragment(n))) found = true;
+  });
+  return found;
+}
+
+/**
+ * Derive a component display name directly from source text when a file path is unavailable
+ * (e.g. inside Orca's custom editor API, which receives only document text).
+ */
+export function extractComponentName(source: string): string {
+  try {
+    const program = parseSource(source).program;
+    const declName = (decl: t.Node | null | undefined): string | null => {
+      if (!decl) return null;
+      if (t.isFunctionDeclaration(decl) && decl.id && containsJsx(decl)) {
+        return decl.id.name;
+      }
+      if (t.isVariableDeclaration(decl)) {
+        for (const d of decl.declarations) {
+          if (t.isIdentifier(d.id) && d.init && containsJsx(d.init)) {
+            return d.id.name;
+          }
+        }
+      }
+      return null;
+    };
+
+    for (const stmt of program.body) {
+      if (t.isExportNamedDeclaration(stmt) && stmt.declaration) {
+        const name = declName(stmt.declaration);
+        if (name) return name;
+      }
+      if (t.isExportDefaultDeclaration(stmt)) {
+        const name = declName(stmt.declaration);
+        if (name) return name;
+      }
+    }
+
+    for (const stmt of program.body) {
+      const name = declName(stmt);
+      if (name && /^[A-Z]/.test(name)) return name;
+    }
+
+    const cvaCall = findFirstCvaCall(program);
+    if (cvaCall) {
+      let cvaVar: string | null = null;
+      walk(program, (n) => {
+        if (!cvaVar && t.isVariableDeclarator(n) && n.init === cvaCall && t.isIdentifier(n.id)) {
+          cvaVar = n.id.name;
+        }
+      });
+      if (cvaVar) return cvaVar;
+    }
+
+    const firstEl = openingElements(source)[0];
+    if (firstEl) return elementName(firstEl) || 'Component';
+    return 'Component';
+  } catch {
+    return 'Component';
+  }
+}

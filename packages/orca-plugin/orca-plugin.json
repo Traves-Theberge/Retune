@@ -1,0 +1,93 @@
+{
+  "manifestVersion": 2,
+  "id": "retune",
+  "name": "Retune",
+  "version": "1.0.0",
+  "description": "Visual component stage for React, Tailwind and cva: tune classes and variants and write them back to source.",
+  "author": {
+    "name": "Traves Theberge",
+    "url": "https://github.com/Traves-Theberge/Retune"
+  },
+  "repository": "https://github.com/Traves-Theberge/Retune",
+  "engines": {
+    "orca": ">=1.4.248"
+  },
+  "execution": "sandboxed-ui",
+  "pluginApi": 1,
+  "contributes": {
+    "customEditors": [
+      {
+        "id": "retune-stage",
+        "title": "Retune",
+        "extensions": [".tsx", ".jsx"],
+        "entry": "webview/stage.html",
+        "priority": "option",
+        "contentKind": "text",
+        "frame": "isolated"
+      }
+    ],
+    "panels": [
+      {
+        "id": "retune-inspector",
+        "title": "Retune Inspector",
+        "icon": "layers",
+        "entry": "webview/inspector.html"
+      }
+    ],
+    "commands": [
+      {
+        "id": "retune.toggleInspector",
+        "title": "Retune: Toggle Inspector Sidebar",
+        "when": "workspace",
+        "action": "sidebar.right.toggle"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "retune.toggleInspector",
+        "key": "Mod+Shift+R",
+        "when": "workspace"
+      }
+    ],
+    "settings": [
+      {
+        "key": "daemon.port",
+        "title": "Daemon port",
+        "description": "Port for external Retune Engine HTTP & MCP tools.",
+        "type": "integer",
+        "default": 49221,
+        "minimum": 1024,
+        "maximum": 65535
+      },
+      {
+        "key": "stage.defaultViewport",
+        "title": "Default viewport",
+        "description": "Default viewport width preset on the Stage canvas.",
+        "type": "string",
+        "enum": ["responsive", "mobile", "tablet", "desktop"],
+        "enumLabels": ["Fluid", "Mobile (375px)", "Tablet (768px)", "Desktop (1024px)"],
+        "default": "responsive"
+      },
+      {
+        "key": "stage.showGrid",
+        "title": "Show grid",
+        "description": "Display dot alignment grid on the Stage canvas.",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "scalar.layout",
+        "title": "API console layout",
+        "description": "Layout theme for the embedded OpenAPI console.",
+        "type": "string",
+        "enum": ["modern", "classic"],
+        "enumLabels": ["Modern", "Classic"],
+        "default": "modern"
+      }
+    ]
+  },
+  "capabilities": [
+    { "kind": "settings:own" },
+    { "kind": "storage:own" }
+  ]
+}

@@ -3,6 +3,7 @@ import {
   applyEdits,
   computeClassNameEdit,
   computeDefaultVariantEdit,
+  extractComponentName,
   extractElementClassName,
   extractPreviewTree,
   listElements,
@@ -123,6 +124,16 @@ describe('extractPreviewTree', () => {
     // Second <span> in file because Helper() has index 0
     expect(tree?.children[1].elementIndex).toBe(1);
     expect(tree?.children[2].className).toBe('px-3 py-1');
+  });
+});
+
+describe('extractComponentName', () => {
+  it('extracts exported function or arrow component names and falls back cleanly', () => {
+    expect(extractComponentName('export function PrimaryButton() { return <button />; }')).toBe('PrimaryButton');
+    expect(extractComponentName('export const CardBox = () => <div />;')).toBe('CardBox');
+    expect(extractComponentName('export default function ModalShell() { return <section />; }')).toBe('ModalShell');
+    expect(extractComponentName('const buttonVariants = cva("px-2");')).toBe('buttonVariants');
+    expect(extractComponentName('const x = 1;')).toBe('Component');
   });
 });
 

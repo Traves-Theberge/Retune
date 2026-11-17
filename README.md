@@ -52,6 +52,7 @@ retune/
 │   ├── engine/              # @retune/engine — Ephemeral Vite Sandbox & Local HTTP Daemon (:49221)
 │   ├── webview/             # @retune/webview — React 19 + Tailwind + Scalar UI (Editor Tab & Sidebar)
 │   ├── mcp/                 # @retune/mcp — Model Context Protocol (MCP) stdio Server
+│   ├── orca-plugin/         # @retune/orca-plugin — Native Orca (onorca.dev) Format 2 Plugin
 │   └── vscode-extension/    # retune-vscode — VS Code Extension Host, Sidebar & Editor Tab Providers
 ├── Spec.md                  # Engineering Architecture & Implementation Blueprint
 ├── turbo.json               # Turborepo task pipeline
@@ -60,10 +61,11 @@ retune/
 
 | Package | Description |
 | :--- | :--- |
-| [`@retune/core`](./packages/core) | AST analyzers (`extractCvaMetadata`, `analyzeProps`), non-lossy mutators (`mutateClassName`, `mutateDefaultVariant`), shared TypeScript contracts, and OpenAPI 3.1 specification. |
+| [`@retune/core`](./packages/core) | AST analyzers (`extractCvaMetadata`, `analyzeProps`, `extractComponentName`, `extractPreviewTree`), non-lossy mutators (`mutateClassName`, `mutateCvaVariant`, `mutateDefaultVariant`), shared TypeScript contracts, and OpenAPI 3.1 specification. |
 | [`@retune/engine`](./packages/engine) | Local HTTP daemon (`127.0.0.1:49221`) serving `/v1/openapi.json`, `/v1/components/inspect`, and `/v1/components/mutate`, plus programmatic Vite sandbox resolver. |
-| [`@retune/webview`](./packages/webview) | Dual-mode React application rendering **The Stage** (Editor Tab) and **Params & Configuration** (Activity Bar Sidebar), with embedded `@scalar/api-reference-react`. |
-| [`@retune/mcp`](./packages/mcp) | Model Context Protocol server exposing AST inspection and class mutation tools over stdio. |
+| [`@retune/webview`](./packages/webview) | Dual-mode React application rendering **The Stage** and **Inspector Sidebar**, with embedded `@scalar/api-reference-react` and adapters for both VS Code and Orca. |
+| [`@retune/mcp`](./packages/mcp) | Model Context Protocol server exposing AST inspection and class/CVA variant mutation tools over stdio. |
+| [`@retune/orca-plugin`](./packages/orca-plugin) | Orca (`onorca.dev`) Format 2 plugin (`sandboxed-ui`) providing the `.tsx`/`.jsx` Retune custom editor, right-sidebar Inspector panel, commands, keybinding (`Mod+Shift+R`), and settings. |
 | [`retune-vscode`](./packages/vscode-extension) | VS Code extension integrating Activity Bar views, Editor Title Tab actions, CodeLens, and bidirectional state synchronization. |
 
 ---
@@ -96,6 +98,22 @@ pnpm test
 3. Press **`F5`** (or select **Run Extension** in the Run & Debug panel).
 4. In the Extension Development Host window, open any `.tsx` component (e.g., `Button.tsx`).
 5. Click the **Retune** icon in the Activity Bar to use the **Params & Configuration Sidebar**, or press **`Ctrl+Shift+R`** (`Cmd+Shift+R`) / click **Retune: Open Visual Stage** in the editor tab bar.
+
+### 3. Use as an Orca (`onorca.dev`) Plugin
+1. Build the workspace so `packages/orca-plugin/webview/` contains the compiled assets:
+   ```bash
+   pnpm build
+   ```
+2. Validate the plugin manifest and isolated editor bundle offline:
+   ```bash
+   orca plugin validate packages/orca-plugin
+   orca plugin check packages/orca-plugin
+   ```
+3. With the **Orca** desktop app running and plugins enabled, install or load the development folder (confirming the displayed permission prompt when prompted):
+   ```bash
+   orca plugin dev load packages/orca-plugin
+   ```
+4. Open any `.tsx` or `.jsx` file in Orca and switch the tab view toggle beside **Source** to **Retune**, or open **Retune Inspector** in the right sidebar (`Mod+Shift+R`).
 
 ---
 

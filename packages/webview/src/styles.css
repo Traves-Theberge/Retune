@@ -53,8 +53,30 @@
   --rt-frame-light: #ffffff;
 }
 
-body.vscode-light {
+body.vscode-light,
+html.light {
   color-scheme: light;
+}
+
+/* When running inside Orca (html.dark / html.light without VS Code variables), map --rt-* to --orca-* tokens */
+html.dark,
+html.light {
+  --rt-canvas: var(--vscode-editor-background, var(--orca-background, #09090b));
+  --rt-panel: var(--vscode-sideBar-background, var(--orca-card, #0e0e12));
+  --rt-raised: var(--vscode-input-background, var(--orca-muted, #16161b));
+  --rt-overlay: var(--vscode-menu-background, var(--orca-popover, #111116));
+  --rt-line: var(--vscode-panel-border, var(--orca-border, #27272a));
+  --rt-fg: var(--vscode-foreground, var(--orca-foreground, #e4e4e7));
+  --rt-muted: var(--vscode-descriptionForeground, var(--orca-muted-foreground, #a1a1aa));
+  --rt-subtle: var(--vscode-disabledForeground, var(--orca-muted-foreground, #71717a));
+  --rt-accent: var(--vscode-button-background, var(--orca-primary, #4f46e5));
+  --rt-accent-fg: var(--vscode-button-foreground, var(--orca-primary-foreground, #ffffff));
+  --rt-accent-hover: var(--vscode-button-hoverBackground, var(--orca-accent, #6366f1));
+  --rt-focus: var(--vscode-focusBorder, var(--orca-ring, #6366f1));
+  --rt-hover: var(--vscode-list-hoverBackground, var(--orca-accent, #27272a));
+  --rt-active: var(--vscode-list-activeSelectionBackground, var(--orca-secondary, #3f3f46));
+  --rt-active-fg: var(--vscode-list-activeSelectionForeground, var(--orca-secondary-foreground, #ffffff));
+  --rt-danger: var(--vscode-errorForeground, var(--orca-destructive, #f43f5e));
 }
 
 @theme inline {

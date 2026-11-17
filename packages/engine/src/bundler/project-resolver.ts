@@ -12,7 +12,7 @@ import {
 
 const RESOLVE_EXTENSIONS = ['', '.tsx', '.jsx', '.ts', '.js', '/index.tsx', '/index.jsx', '/index.ts', '/index.js'];
 const CSS_DEFAULTS = ['styles.css', 'index.css', 'app.css', 'globals.css'];
-const MAX_CSS_CHARS = 180_000;
+const MAX_CSS_CHARS = 400_000;
 
 export function createImportResolver(entryFile: string): PreviewTreeOptions['resolveImport'] {
   const fileCache = new Map<string, string | null>();
@@ -102,6 +102,17 @@ function findMatchingBrace(css: string, openIdx: number): number {
   return css.length - 1;
 }
 
+function rewriteMediaHeader(header: string): string {
+  if (!/^@media\b/i.test(header)) return header;
+  const cond = header.slice('@media'.length).trim();
+  if (!/\b(?:min-width|max-width|width)\b/i.test(cond)) return header;
+  if (/\b(?:prefers-reduced-motion|prefers-color-scheme|pointer|any-pointer|hover|any-hover|print|speech)\b/i.test(cond)) {
+    return header;
+  }
+  const normalized = cond.replace(/^(?:only\s+)?(?:all|screen)\s+and\s+/i, '').trim();
+  return normalized ? `@container retune-stage ${normalized}` : header;
+}
+
 /**
  * Prefix project CSS selectors with `.retune-preview-scope` so component styles work
  * cleanly in The Stage without leaking into Retune's own UI chrome.
@@ -137,7 +148,8 @@ export function scopePreviewCss(rawCss: string, scopeClass = '.retune-preview-sc
       if (/^@(-webkit-)?keyframes\b|^@font-face\b|^@property\b/i.test(header)) {
         topLevelAtRules.push(`${header}{${body}}`);
       } else if (/^@(media|supports|layer|container)\b/i.test(header)) {
-        out += `${header}{${rewriteBlock(body)}}`;
+        const rewrittenHeader = rewriteMediaHeader(header);
+        out += `${rewrittenHeader}{${rewriteBlock(body)}}`;
       } else if (header.startsWith('@')) {
         topLevelAtRules.push(`${header}{${body}}`);
       } else {
@@ -149,17 +161,22 @@ export function scopePreviewCss(rawCss: string, scopeClass = '.retune-preview-sc
     return out;
   };
 
-  const layeredRules = rewriteBlock(stripped);
+  const scopedRules = rewriteBlock(stripped);
   const parts = [...topLevelAtRules];
-  if (layeredRules.trim()) parts.push(`@layer components {${layeredRules}}`);
+  if (scopedRules.trim()) parts.push(scopedRules);
   return parts.join('\n');
 }
+
+const PREVIEW_SHELL_OVERRIDES =
+  '.retune-preview-scope .app-shell > .sidebar { position: sticky; top: 0; height: auto; min-height: 100%; align-self: stretch; }\n' +
+  '.retune-preview-scope .main-column { margin-left: 0; }';
 
 export function collectWorkspaceCss(entryFile: string, sourceText: string): string {
   if (!entryFile) return '';
   const dir = path.dirname(entryFile);
   const cssFiles: string[] = [];
   const seen = new Set<string>();
+  const cssImportRe = /import\s+(?:[^'"]+\s+from\s+)?['"](\.[^'"]+\.css)['"]/g;
   const addCss = (candidate: string) => {
     const abs = path.resolve(candidate);
     if (seen.has(abs)) return;
@@ -172,27 +189,52 @@ export function collectWorkspaceCss(entryFile: string, sourceText: string): stri
       // Ignore missing CSS files
     }
   };
+  const collectImportsFromSource = (baseDir: string, text: string) => {
+    cssImportRe.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = cssImportRe.exec(text)) !== null) {
+      addCss(path.resolve(baseDir, m[1]));
+    }
+  };
 
-  // Discover shared app stylesheet in current or ancestor directories (up to 2 levels up)
+  // Discover shared app stylesheet and entry-point CSS imports across up to 3 ancestor levels
   let walkDir = dir;
   const baseCandidates: string[] = [];
+  const entryCandidates: string[] = [];
   for (let level = 0; level < 3; level++) {
     for (const file of CSS_DEFAULTS) {
       const cand = path.join(walkDir, file);
       if (fs.existsSync(cand)) baseCandidates.unshift(cand);
+    }
+    for (const entryName of ['main.tsx', 'main.jsx', 'App.tsx', 'App.jsx', 'index.tsx']) {
+      const entryCand = path.join(walkDir, entryName);
+      if (fs.existsSync(entryCand)) entryCandidates.unshift(entryCand);
     }
     const parent = path.dirname(walkDir);
     if (parent === walkDir) break;
     walkDir = parent;
   }
   baseCandidates.forEach(addCss);
+  for (const entryCand of entryCandidates) {
+    try {
+      collectImportsFromSource(path.dirname(entryCand), fs.readFileSync(entryCand, 'utf8'));
+    } catch {
+      // Ignore unreadable entry file
+    }
+  }
+
+  // Sibling stylesheets in the component's own folder (excluding CSS Modules)
+  try {
+    const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.css') && !f.endsWith('.module.css')).sort();
+    for (const f of entries) {
+      addCss(path.join(dir, f));
+    }
+  } catch {
+    // Ignore unreadable directory
+  }
 
   // Explicit component CSS imports (e.g. `import './task-wizard.css';`) loaded after shared styles
-  const cssImportRe = /import\s+(?:[^'"]+\s+from\s+)?['"](\.[^'"]+\.css)['"]/g;
-  let m: RegExpExecArray | null;
-  while ((m = cssImportRe.exec(sourceText)) !== null) {
-    addCss(path.resolve(dir, m[1]));
-  }
+  collectImportsFromSource(dir, sourceText);
 
   if (cssFiles.length === 0) return '';
   let combined = '';
@@ -206,7 +248,8 @@ export function collectWorkspaceCss(entryFile: string, sourceText: string): stri
       // Skip unreadable CSS file
     }
   }
-  return combined.trim();
+  if (!combined.trim()) return '';
+  return `${combined.trim()}\n${PREVIEW_SHELL_OVERRIDES}`;
 }
 
 export function inspectComponentFile(

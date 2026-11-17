@@ -18,6 +18,7 @@ describe('@retune/orca-plugin manifest & bundle', () => {
       { kind: 'settings:own' },
       { kind: 'storage:own' },
     ]);
+    expect(fs.existsSync(path.join(pluginRoot, 'webview', 'workspace-index.js'))).toBe(true);
   });
 
   it('generates offline stage.html and inspector.html with relative local assets and no CDN/base tags', () => {

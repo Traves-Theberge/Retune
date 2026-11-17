@@ -154,4 +154,43 @@ describe('stage pieces', () => {
     expect(pageOut).not.toContain('>path<');
     expect(pageOut).not.toContain('>span<');
   });
+
+  it('renders interleaved #text nodes in order and applies retune-stage container framing', () => {
+    const out = html(
+      <Stage
+        store={store({
+          stage: { ...DEFAULT_STAGE_STATE, harmonicsClass: '', baselineClass: '' },
+          meta: {
+            ...DEMO_META,
+            componentName: 'FilterBar',
+            cva: { hasCva: false, variants: {}, defaultVariants: {}, baseClasses: '' },
+            previewTree: {
+              tag: 'div',
+              elementIndex: 0,
+              className: 'filter-bar',
+              children: [
+                {
+                  tag: 'button',
+                  elementIndex: 1,
+                  className: 'filter-pill',
+                  children: [
+                    { tag: 'span', elementIndex: 2, className: 'dot', children: [] },
+                    { tag: '#text', elementIndex: -1, className: '', text: 'All', children: [] },
+                    { tag: 'span', elementIndex: 3, className: 'count', text: '4', children: [] },
+                  ],
+                },
+              ],
+            },
+          },
+        })}
+        tone="light"
+        comparing={false}
+        onToggleTone={noop}
+      />
+    );
+    expect(out).toContain('container-name:retune-stage');
+    expect(out).toContain('container-type:inline-size');
+    expect(out).toContain('max-w-6xl');
+    expect(out).toMatch(/<span class="dot"><\/span>All<span class="count">4<\/span>/);
+  });
 });

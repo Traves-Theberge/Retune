@@ -76,6 +76,90 @@ export interface OrcaFrameApi {
   on?(event: 'theme', handler: (payload: { colorScheme: 'light' | 'dark' }) => void): OrcaDisposable;
 }
 
+interface WorkspaceIndex {
+  files: Record<string, string>;
+  cssByDir: Record<string, string>;
+}
+
+const normSlashes = (p: string) => p.replace(/\\/g, '/');
+const normLf = (s: string) => s.replace(/\r\n/g, '\n');
+
+function resolvePosixRelative(fromFile: string, specifier: string): string {
+  const parts = normSlashes(fromFile).split('/');
+  parts.pop();
+  for (const seg of specifier.split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') {
+      if (parts.length > 1) parts.pop();
+    } else {
+      parts.push(seg);
+    }
+  }
+  return parts.join('/');
+}
+
+function baseNameNoExt(filePath: string): string {
+  const idx = filePath.lastIndexOf('/');
+  const file = idx >= 0 ? filePath.slice(idx + 1) : filePath;
+  const dot = file.lastIndexOf('.');
+  return dot >= 0 ? file.slice(0, dot) : file;
+}
+
+function matchesComponentName(filePath: string, diskText: string, componentName: string): boolean {
+  if (!componentName || componentName === 'Component') return false;
+  if (baseNameNoExt(filePath) === componentName) return true;
+  const declRe = new RegExp(`\\b(?:export\\s+(?:default\\s+)?)?(?:function|const|class)\\s+${componentName}\\b`);
+  return declRe.test(diskText);
+}
+
+function findWorkspaceMatch(
+  index: WorkspaceIndex | undefined,
+  sourceText: string,
+  componentName: string,
+  prevMatch: string
+): string {
+  if (!index?.files) return '';
+  const norm = normLf(sourceText);
+
+  if (prevMatch && index.files[prevMatch] !== undefined) {
+    const prev = index.files[prevMatch];
+    if (!prev.startsWith('data:') && normLf(prev) === norm) return prevMatch;
+  }
+
+  const candidates: string[] = [];
+  for (const [filePath, diskText] of Object.entries(index.files)) {
+    if (diskText.startsWith('data:')) continue;
+    if (normLf(diskText) === norm) return filePath;
+    if (matchesComponentName(filePath, diskText, componentName)) {
+      candidates.push(filePath);
+    }
+  }
+
+  if (prevMatch && candidates.includes(prevMatch)) return prevMatch;
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length > 1) {
+    const head = norm.slice(0, 160);
+    const byHead = candidates.find((c) => normLf(index.files[c]).slice(0, 160) === head);
+    if (byHead) return byHead;
+    const byName = candidates.find((c) => baseNameNoExt(c) === componentName);
+    if (byName) return byName;
+  }
+  return '';
+}
+
+function lookupWorkspaceCss(index: WorkspaceIndex | undefined, filePath: string): string {
+  if (!index?.cssByDir || !filePath) return '';
+  const parts = normSlashes(filePath).split('/');
+  parts.pop();
+  for (let i = 0; i < 4 && parts.length > 0; i++) {
+    const dir = parts.join('/');
+    if (index.cssByDir[dir]) return index.cssByDir[dir];
+    if (parts.length === 1) break;
+    parts.pop();
+  }
+  return '';
+}
+
 const SNAPSHOT_KEY = 'retune.snapshot';
 const INTENT_KEY = 'retune.intent';
 
@@ -320,6 +404,8 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
     publishSnapshot();
   };
 
+  let lastMatchedPath = '';
+
   const ingestSource = (nextSource: string, firstLoad: boolean) => {
     sourceText = nextSource;
     try {
@@ -327,8 +413,42 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
       const props = analyzeProps(nextSource);
       const componentName = extractComponentName(nextSource);
       const elements = listElements(nextSource);
-      const previewTree = extractPreviewTree(nextSource);
-      meta = { componentName, filePath: '', cva, props, rawSource: nextSource, elements, previewTree };
+      const workspaceIndex =
+        typeof window !== 'undefined'
+          ? (window as unknown as { RETUNE_WORKSPACE_INDEX?: WorkspaceIndex }).RETUNE_WORKSPACE_INDEX
+          : undefined;
+      const matchedPath = findWorkspaceMatch(workspaceIndex, nextSource, componentName, lastMatchedPath);
+      if (matchedPath) lastMatchedPath = matchedPath;
+
+      const resolveImport =
+        matchedPath && workspaceIndex
+          ? (specifier: string, fromId?: string) => {
+              if (!specifier.startsWith('.')) return null;
+              const base = resolvePosixRelative(fromId || matchedPath, specifier);
+              for (const ext of ['', '.tsx', '.jsx', '.ts', '.js', '/index.tsx', '/index.jsx', '.svg']) {
+                const cand = `${base}${ext}`;
+                const hit = workspaceIndex.files[cand];
+                if (hit !== undefined) return { id: cand, source: hit };
+              }
+              return null;
+            }
+          : undefined;
+
+      const previewTree = extractPreviewTree(
+        nextSource,
+        matchedPath ? { sourceId: matchedPath, resolveImport } : undefined
+      );
+      const workspaceCss = lookupWorkspaceCss(workspaceIndex, matchedPath);
+      meta = {
+        componentName,
+        filePath: matchedPath,
+        cva,
+        props,
+        rawSource: nextSource,
+        elements,
+        previewTree,
+        ...(workspaceCss ? { workspaceCss } : {}),
+      };
       lastGood = meta;
       problem = null;
 

@@ -184,6 +184,84 @@ describe('extractPreviewTree', () => {
     expect(tree?.elementIndex).toBe(-1);
     expect(JSON.stringify(tree)).toContain('Connections');
   });
+
+  it('preserves interleaved text alongside child elements', () => {
+    const src = `
+      export function FilterButton() {
+        return (
+          <button className="filter-pill">
+            <span className="dot" />
+            All <span className="pill-count">4</span>
+          </button>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(src);
+    expect(tree?.children.map((c) => c.tag)).toEqual(['span', '#text', 'span']);
+    expect(tree?.children[1].text?.trim()).toBe('All');
+    expect(tree?.children[2].text).toBe('4');
+  });
+
+  it('passes evaluated props and JSX children into imported components via resolveImport', () => {
+    const page = `
+      import { Card } from './Card';
+      const item = { name: 'Stretch', enabled: true };
+      export function Page() {
+        return <Card title={item.name} active={item.enabled}><span className="badge">Ready</span></Card>;
+      }
+    `;
+    const card = `
+      export function Card({ title, active, children }: { title: string; active?: boolean; children?: React.ReactNode }) {
+        return (
+          <article className={active ? 'card on' : 'card off'}>
+            <h3>{title}</h3>
+            {children}
+          </article>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(page, {
+      resolveImport: (spec) => (spec === './Card' ? card : null),
+    });
+    expect(tree?.tag).toBe('article');
+    expect(tree?.className).toBe('card on');
+    expect(tree?.children[0]?.text).toBe('Stretch');
+    expect(tree?.children[1]?.text).toBe('Ready');
+  });
+
+  it('evaluates block-body declarations, string/array methods, and fallback coalescing in functions and map callbacks', () => {
+    const src = `
+      import { useState } from 'react';
+      const TASKS = [
+        { id: '1', name: 'Stretch', enabled: true },
+        { id: '2', name: 'Hydrate', enabled: false },
+      ];
+      export function TasksView({ catalog }: { catalog: any }) {
+        const [search] = useState('');
+        const [filter] = useState('all');
+        const hasActiveFilters = search.trim() !== '' || filter !== 'all';
+        const activeCount = TASKS.filter((t) => t.enabled).length;
+        return (
+          <div className="tasks-view">
+            {hasActiveFilters && <button className="clear-filters">Clear all filters</button>}
+            <span className="active-total">{activeCount}</span>
+            {TASKS.map((t) => {
+              const group = catalog?.[t.id]?.group ?? 'Daily rituals';
+              const status = t.enabled ? 'ACTIVE' : 'PAUSED';
+              return <div className="row" key={t.id}><span>{t.name}</span><span>{group}</span><span>{status}</span></div>;
+            })}
+          </div>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(src);
+    const json = JSON.stringify(tree);
+    expect(json).not.toContain('Clear all filters');
+    expect(json).toContain('"text":"1"');
+    expect(json).toContain('"text":"Daily rituals"');
+    expect(json).toContain('"text":"ACTIVE"');
+    expect(json).toContain('"text":"PAUSED"');
+  });
 });
 
 describe('extractComponentName', () => {

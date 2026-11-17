@@ -10,7 +10,7 @@
       "outputs": ["dist/**", "webview-dist/**"]
     },
     "@retune/orca-plugin#build": {
-      "dependsOn": ["^build", "@retune/webview#build"],
+      "dependsOn": ["^build", "@retune/engine#build", "@retune/webview#build"],
       "outputs": ["webview/**"]
     },
     "dev": {

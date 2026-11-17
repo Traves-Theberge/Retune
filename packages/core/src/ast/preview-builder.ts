@@ -20,12 +20,16 @@ export interface PreviewTreeOptions {
   resolveImport?: (specifier: string, fromId?: string) => ResolvedImport | null;
   /** Identifier/file path of the current source for resolving nested relative imports. */
   sourceId?: string;
+  /** Seeded props passed from a parent JSX invocation when rendering imported components. */
+  props?: Record<string, unknown>;
   /** Maximum component/expression expansion depth. Defaults to 6. */
   maxDepth?: number;
   /** @internal Cycle protection across cross-file imports. */
   _visitedImports?: Set<string>;
   /** @internal Current cross-file import depth. */
   _importDepth?: number;
+  /** @internal Pre-expanded JSX nodes passed across imports (e.g. `children`). */
+  _jsxProps?: Record<string, PreviewNode[]>;
 }
 
 const UNKNOWN = Symbol('unknown');
@@ -46,7 +50,7 @@ const STYLE_KEYS = new Set([
 ]);
 
 const SKIP_UNKNOWN_GUARD_RE =
-  /^(error|err|loading|isLoading|loadFailed|failed|editing|removing|renaming|reauth|setup|open|addOpen|rescheduleModalOpen|blockedModalOpen|hasError|pendingCleanup|ended|checking)$/i;
+  /^(error|err|loading|isLoading|loadFailed|failed|editing|removing|renaming|reauth|setup|open|addOpen|rescheduleModalOpen|blockedModalOpen|hasError|pendingCleanup|ended|checking|hasActiveFilters|saving|isSaving|deleting|isDeleting|submitting|confirming|isEmpty|showEmpty|copied|restarting|exporting|importing|unchecked|anyUnknown)$/i;
 const DATA_COLLECTION_STATE_RE =
   /^(data|devices|items|tasks|events|occurrences|records|results|rows|list|entries|failures|snapshot|avatar|client)$/i;
 
@@ -91,6 +95,9 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     label: 'Daily rituals',
     title: 'Screen & Eye Rest',
     instruction: 'Look 20 feet away and roll your shoulders back.',
+    group: 'Daily rituals',
+    category: 'Mobility',
+    animation: 'shoulder_rolls',
     provider: 'google',
     key: 'rituals',
     id: 'sample-1',
@@ -101,6 +108,7 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     status: 'verified',
     enabled: true,
     isCurrent: true,
+    order: 0,
     intervalMinutes: 45,
     durationSeconds: 30,
     count: 4,
@@ -108,12 +116,25 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     completed: 6,
     rate: 75,
     at: '10:30 AM',
+    task: {
+      id: 'sample-1',
+      name: 'Morning Stretch',
+      instruction: 'Look 20 feet away and roll your shoulders back.',
+      intervalMinutes: 45,
+      durationSeconds: 30,
+      enabled: true,
+      animation: 'shoulder_rolls',
+      order: 0,
+    },
   },
   {
     name: 'Hydrate & Reset',
     label: 'Movement',
     title: 'Posture Check',
     instruction: 'Step away for a glass of water and deep breaths.',
+    group: 'Hydration',
+    category: 'Wellness',
+    animation: 'hydration',
     provider: 'microsoft',
     key: 'calendar',
     id: 'sample-2',
@@ -124,6 +145,7 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     status: 'offline_cached',
     enabled: false,
     isCurrent: false,
+    order: 1,
     intervalMinutes: 60,
     durationSeconds: 45,
     count: 3,
@@ -131,6 +153,16 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     completed: 4,
     rate: 67,
     at: '11:15 AM',
+    task: {
+      id: 'sample-2',
+      name: 'Hydrate & Reset',
+      instruction: 'Step away for a glass of water and deep breaths.',
+      intervalMinutes: 60,
+      durationSeconds: 45,
+      enabled: false,
+      animation: 'hydration',
+      order: 1,
+    },
   },
 ];
 
@@ -532,8 +564,202 @@ function evalRawLiteral(node: t.Node | null | undefined, constMap: Map<string, t
   return UNKNOWN;
 }
 
+function evalCallbackReturn(
+  cb: t.Function,
+  args: unknown[],
+  env: Record<string, unknown>,
+  scope: FileScope,
+  depth: number
+): EvalResult {
+  const cbEnv: Record<string, unknown> = { ...env };
+  const dummyJsx = new Map<string, t.Expression>();
+  cb.params.forEach((p, idx) => {
+    bindPattern(p, idx < args.length ? args[idx] : undefined, cbEnv, dummyJsx, scope);
+  });
+  let retExpr: t.Expression | null = null;
+  if (t.isArrowFunctionExpression(cb) && !t.isBlockStatement(cb.body)) {
+    retExpr = cb.body;
+  } else if (t.isBlockStatement(cb.body)) {
+    for (const stmt of cb.body.body) {
+      if (t.isVariableDeclaration(stmt)) {
+        for (const decl of stmt.declarations) {
+          if (!decl.init) continue;
+          const v = evalValue(decl.init, cbEnv, scope, depth + 1);
+          if (v !== UNKNOWN) bindPattern(decl.id, v, cbEnv, dummyJsx, scope);
+          else if (t.isIdentifier(decl.id)) cbEnv[decl.id.name] = UNKNOWN;
+        }
+      } else if (t.isReturnStatement(stmt)) {
+        retExpr = stmt.argument ?? null;
+        break;
+      }
+    }
+  }
+  return retExpr ? evalValue(retExpr, cbEnv, scope, depth + 1) : UNKNOWN;
+}
+
+function evalCallExpression(
+  u: t.CallExpression | t.OptionalCallExpression,
+  env: Record<string, unknown>,
+  scope: FileScope,
+  depth: number
+): EvalResult {
+  const callee = unwrapExpr(u.callee);
+  if (!callee) return UNKNOWN;
+
+  if (t.isIdentifier(callee)) {
+    const arg0 = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : UNKNOWN;
+    if (callee.name === 'String' && arg0 !== UNKNOWN) return String(arg0);
+    if (callee.name === 'Number' && arg0 !== UNKNOWN) return Number(arg0);
+    if (callee.name === 'Boolean' && arg0 !== UNKNOWN) return Boolean(arg0);
+    if (callee.name === 'useMemo' && u.arguments[0]) {
+      const fn = unwrapExpr(u.arguments[0]);
+      if (t.isFunction(fn) && !containsJsx(fn.body)) {
+        return evalCallbackReturn(fn, [], env, scope, depth + 1);
+      }
+    }
+    const helper = scope.helperFns.get(callee.name);
+    if (helper && !containsJsx(helper.fn.body)) {
+      const evalArgs = u.arguments.map((a) => evalValue(a, env, scope, depth + 1));
+      if (!evalArgs.some((a) => a === UNKNOWN)) {
+        return evalCallbackReturn(helper.fn, evalArgs, env, scope, depth + 1);
+      }
+    }
+    return UNKNOWN;
+  }
+
+  if (t.isMemberExpression(callee) || t.isOptionalMemberExpression(callee)) {
+    const method = t.isIdentifier(callee.property) ? callee.property.name : '';
+    if (!method) return UNKNOWN;
+
+    if (t.isIdentifier(callee.object)) {
+      if (callee.object.name === 'Object' && (method === 'keys' || method === 'values' || method === 'entries')) {
+        const target = evalValue(u.arguments[0], env, scope, depth + 1);
+        if (target && typeof target === 'object' && !Array.isArray(target)) {
+          return method === 'keys'
+            ? Object.keys(target)
+            : method === 'values'
+              ? Object.values(target)
+              : Object.entries(target);
+        }
+        return UNKNOWN;
+      }
+      if (callee.object.name === 'Math') {
+        const nums = u.arguments.map((a) => evalValue(a, env, scope, depth + 1));
+        if (nums.some((n) => typeof n !== 'number')) return UNKNOWN;
+        const n = nums as number[];
+        if (method === 'max' && n.length > 0) return Math.max(...n);
+        if (method === 'min' && n.length > 0) return Math.min(...n);
+        if (method === 'round' && n.length > 0) return Math.round(n[0]);
+        if (method === 'floor' && n.length > 0) return Math.floor(n[0]);
+        if (method === 'ceil' && n.length > 0) return Math.ceil(n[0]);
+        return UNKNOWN;
+      }
+      if (callee.object.name === 'React' && method === 'useMemo' && u.arguments[0]) {
+        const fn = unwrapExpr(u.arguments[0]);
+        if (t.isFunction(fn) && !containsJsx(fn.body)) {
+          return evalCallbackReturn(fn, [], env, scope, depth + 1);
+        }
+      }
+    }
+
+    const recv = evalValue(callee.object, env, scope, depth + 1);
+    if ((recv === null || recv === undefined) && t.isOptionalCallExpression(u)) return undefined;
+    if (recv === UNKNOWN) return UNKNOWN;
+
+    if (typeof recv === 'string') {
+      const a0 = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : UNKNOWN;
+      const a1 = u.arguments[1] ? evalValue(u.arguments[1], env, scope, depth + 1) : UNKNOWN;
+      switch (method) {
+        case 'trim': return recv.trim();
+        case 'trimStart': return recv.trimStart();
+        case 'trimEnd': return recv.trimEnd();
+        case 'toLowerCase': return recv.toLowerCase();
+        case 'toUpperCase': return recv.toUpperCase();
+        case 'startsWith': return typeof a0 === 'string' ? recv.startsWith(a0) : UNKNOWN;
+        case 'endsWith': return typeof a0 === 'string' ? recv.endsWith(a0) : UNKNOWN;
+        case 'includes': return typeof a0 === 'string' ? recv.includes(a0) : UNKNOWN;
+        case 'indexOf': return typeof a0 === 'string' ? recv.indexOf(a0) : UNKNOWN;
+        case 'slice':
+          return typeof a0 === 'number' || a0 === UNKNOWN
+            ? recv.slice(typeof a0 === 'number' ? a0 : 0, typeof a1 === 'number' ? a1 : undefined)
+            : UNKNOWN;
+        case 'substring':
+          return typeof a0 === 'number'
+            ? recv.substring(a0, typeof a1 === 'number' ? a1 : undefined)
+            : UNKNOWN;
+        case 'split': return typeof a0 === 'string' ? recv.split(a0) : UNKNOWN;
+        case 'replaceAll':
+          return typeof a0 === 'string' && typeof a1 === 'string' ? recv.replaceAll(a0, a1) : UNKNOWN;
+        case 'replace': {
+          if (typeof a1 !== 'string') return UNKNOWN;
+          const rawArg0 = unwrapExpr(u.arguments[0]);
+          if (t.isRegExpLiteral(rawArg0)) {
+            return recv.replace(new RegExp(rawArg0.pattern, rawArg0.flags), a1);
+          }
+          return typeof a0 === 'string' ? recv.replace(a0, a1) : UNKNOWN;
+        }
+        case 'padStart':
+          return typeof a0 === 'number' ? recv.padStart(a0, typeof a1 === 'string' ? a1 : ' ') : UNKNOWN;
+        case 'padEnd':
+          return typeof a0 === 'number' ? recv.padEnd(a0, typeof a1 === 'string' ? a1 : ' ') : UNKNOWN;
+        default: return UNKNOWN;
+      }
+    }
+
+    if (Array.isArray(recv)) {
+      if (method === 'slice') {
+        const a0 = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : 0;
+        const a1 = u.arguments[1] ? evalValue(u.arguments[1], env, scope, depth + 1) : undefined;
+        return typeof a0 === 'number'
+          ? recv.slice(a0, typeof a1 === 'number' ? a1 : undefined)
+          : UNKNOWN;
+      }
+      if (method === 'join') {
+        const sep = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : ',';
+        return typeof sep === 'string' ? recv.join(sep) : UNKNOWN;
+      }
+      if (method === 'includes') {
+        const needle = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : UNKNOWN;
+        return needle === UNKNOWN ? UNKNOWN : recv.includes(needle);
+      }
+      if (method === 'concat') {
+        const parts = u.arguments.map((a) => evalValue(a, env, scope, depth + 1));
+        if (parts.some((p) => p === UNKNOWN)) return UNKNOWN;
+        return recv.concat(...parts);
+      }
+      if (method === 'filter' || method === 'some' || method === 'every' || method === 'find' || method === 'map') {
+        const cb = unwrapExpr(u.arguments[0]);
+        if (!t.isFunction(cb)) return UNKNOWN;
+        const results = recv.map((item, idx) => evalCallbackReturn(cb, [item, idx], env, scope, depth + 1));
+        if (results.every((r) => r === UNKNOWN)) return UNKNOWN;
+        if (method === 'filter') {
+          const out = recv.filter((_, i) => results[i] !== UNKNOWN && Boolean(results[i]));
+          return out.length === 0 && results.some((r) => r === UNKNOWN) ? UNKNOWN : out;
+        }
+        if (method === 'some') {
+          if (results.some((r) => r !== UNKNOWN && Boolean(r))) return true;
+          return results.some((r) => r === UNKNOWN) ? UNKNOWN : false;
+        }
+        if (method === 'every') {
+          if (results.some((r) => r !== UNKNOWN && !r)) return false;
+          return results.some((r) => r === UNKNOWN) ? UNKNOWN : true;
+        }
+        if (method === 'find') {
+          const idx = results.findIndex((r) => r !== UNKNOWN && Boolean(r));
+          return idx >= 0 ? (recv[idx] as EvalResult) : results.some((r) => r === UNKNOWN) ? UNKNOWN : undefined;
+        }
+        if (method === 'map') {
+          return results.some((r) => r === UNKNOWN) ? UNKNOWN : results;
+        }
+      }
+    }
+  }
+
+  return UNKNOWN;
+}
+
 function evalValue(node: t.Node | null | undefined, env: Record<string, unknown>, scope: FileScope, depth = 0): EvalResult {
-  if (depth > 6) return UNKNOWN;
+  if (depth > 8) return UNKNOWN;
   const u = unwrapExpr(node);
   if (!u) return UNKNOWN;
   if (t.isStringLiteral(u)) return u.value;
@@ -598,11 +824,19 @@ function evalValue(node: t.Node | null | undefined, env: Record<string, unknown>
         ? u.property.name
         : UNKNOWN;
     if (key === UNKNOWN) return UNKNOWN;
+    if (typeof objVal === 'string') {
+      if (key === 'length') return objVal.length;
+      if (typeof key === 'number') return objVal[key] ?? UNKNOWN;
+      return UNKNOWN;
+    }
     if (typeof objVal === 'object' && key !== null && key !== undefined) {
       const prop = (objVal as Record<string, unknown>)[String(key)];
       return prop === undefined ? UNKNOWN : (prop as EvalResult);
     }
     return UNKNOWN;
+  }
+  if (t.isCallExpression(u) || t.isOptionalCallExpression(u)) {
+    return evalCallExpression(u, env, scope, depth);
   }
   if (t.isUnaryExpression(u)) {
     const arg = evalValue(u.argument, env, scope, depth + 1);
@@ -627,6 +861,9 @@ function evalValue(node: t.Node | null | undefined, env: Record<string, unknown>
       case '>=': return Number(l) >= Number(r);
       case '+': return typeof l === 'string' || typeof r === 'string' ? `${l}${r}` : Number(l) + Number(r);
       case '-': return Number(l) - Number(r);
+      case '*': return Number(l) * Number(r);
+      case '/': return Number(r) === 0 ? UNKNOWN : Number(l) / Number(r);
+      case '%': return Number(r) === 0 ? UNKNOWN : Number(l) % Number(r);
       default: return UNKNOWN;
     }
   }
@@ -664,25 +901,68 @@ function evalCondition(node: t.Node | null | undefined, env: Record<string, unkn
 function shouldSkipUnknownGuard(node: t.Node): boolean {
   const u = unwrapExpr(node);
   if (!u) return false;
-  if (t.isIdentifier(u)) return SKIP_UNKNOWN_GUARD_RE.test(u.name);
+  if (t.isIdentifier(u)) {
+    return (
+      SKIP_UNKNOWN_GUARD_RE.test(u.name) ||
+      /Open$/i.test(u.name) ||
+      /(Modal|Dialog|BannerError|ErrorMsg)$/i.test(u.name)
+    );
+  }
+  if (t.isMemberExpression(u) && t.isIdentifier(u.property)) {
+    return /^(error|loading|unchecked|anyUnknown|truncated|pending)$/i.test(u.property.name);
+  }
   if (t.isUnaryExpression(u) && u.operator === '!') {
     const arg = unwrapExpr(u.argument);
-    if (t.isIdentifier(arg) && /^(client|supported|authenticated|owned|ready)$/i.test(arg.name)) {
+    if (t.isIdentifier(arg) && /^(client|supported|authenticated|owned|ready|hasTasks|hasItems|hasEntries)$/i.test(arg.name)) {
+      return true;
+    }
+    if (t.isMemberExpression(arg) && t.isIdentifier(arg.property, { name: 'length' })) {
       return true;
     }
   }
-  if (t.isBinaryExpression(u) && (u.operator === '===' || u.operator === '==')) {
+  if (t.isBinaryExpression(u)) {
     const l = unwrapExpr(u.left);
     const r = unwrapExpr(u.right);
-    if (t.isNullLiteral(r) || (t.isStringLiteral(r) && /^(loading|error|expired)$/i.test(r.value))) {
+    if (
+      u.operator === '>' &&
+      t.isMemberExpression(l) &&
+      t.isIdentifier(l.property, { name: 'length' }) &&
+      t.isMemberExpression(l.object) &&
+      t.isIdentifier(l.object.property, { name: 'truncated' })
+    ) {
       return true;
     }
-    if (t.isIdentifier(l) && l.name === 'view' && t.isStringLiteral(r) && r.value !== 'ready') {
-      return true;
+    if (u.operator === '===' || u.operator === '==') {
+      if (t.isNullLiteral(r) || (t.isStringLiteral(r) && /^(loading|error|expired|empty)$/i.test(r.value))) {
+        return true;
+      }
+      if (t.isMemberExpression(l) && t.isIdentifier(l.property, { name: 'length' }) && t.isNumericLiteral(r, { value: 0 })) {
+        return true;
+      }
+      if (t.isIdentifier(l) && l.name === 'view' && t.isStringLiteral(r) && r.value !== 'ready') {
+        return true;
+      }
     }
   }
   if (t.isLogicalExpression(u) && u.operator === '&&') {
     return shouldSkipUnknownGuard(u.left) || shouldSkipUnknownGuard(u.right);
+  }
+  return false;
+}
+
+function isModalOverlayNode(node: t.Node | null | undefined): boolean {
+  const u = unwrapExpr(node);
+  if (!t.isJSXElement(u)) return false;
+  for (const attr of u.openingElement.attributes) {
+    if (!t.isJSXAttribute(attr) || !t.isJSXIdentifier(attr.name)) continue;
+    const key = attr.name.name;
+    if (key === 'aria-modal') return true;
+    if (key === 'role' && attr.value && t.isStringLiteral(attr.value) && /^(dialog|alertdialog)$/i.test(attr.value.value)) {
+      return true;
+    }
+    if ((key === 'className' || key === 'class') && attr.value && t.isStringLiteral(attr.value)) {
+      if (/(?:^|[\s-])(modal|dialog|drawer|backdrop)(?:$|[\s-])/i.test(attr.value.value)) return true;
+    }
   }
   return false;
 }
@@ -729,6 +1009,12 @@ function extractExprText(node: t.Node | null | undefined, env: Record<string, un
   const evaluated = evalValue(node, env, scope);
   if (evaluated !== UNKNOWN) {
     if (evaluated === null || evaluated === undefined || typeof evaluated === 'boolean') return undefined;
+    if (Array.isArray(evaluated)) return String(evaluated.length);
+    if (typeof evaluated === 'object') {
+      const rec = evaluated as Record<string, unknown>;
+      const pick = rec.name ?? rec.title ?? rec.label ?? rec.instruction ?? rec.id;
+      return pick !== undefined && pick !== null ? String(pick) : undefined;
+    }
     return String(evaluated);
   }
   const u = unwrapExpr(node);
@@ -752,16 +1038,23 @@ function extractExprText(node: t.Node | null | undefined, env: Record<string, un
     const trimmed = out.replace(/\s+/g, ' ').trim();
     return trimmed || undefined;
   }
-  if (t.isIdentifier(u) && u.name !== 'children' && u.name !== 'error' && u.name !== 'message') {
+  if (t.isIdentifier(u) && u.name !== 'children' && u.name !== 'error' && u.name !== 'message' && u.name !== 'className' && u.name !== 'style') {
+    if (/^(group|category|sectionLabel)$/i.test(u.name)) return 'Daily rituals';
+    if (/(Count|Total)$/i.test(u.name)) return '4';
+    if (/Minutes$/i.test(u.name)) return '45';
+    if (/Seconds$/i.test(u.name)) return '30';
+    if (/(Rate|Percent)$/i.test(u.name)) return '85';
+    if (/ScheduleNote$/i.test(u.name)) return 'Workday · 9:00 AM – 5:00 PM';
     const spaced = u.name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
-  if (t.isMemberExpression(u) && t.isIdentifier(u.property)) {
+  if ((t.isMemberExpression(u) || t.isOptionalMemberExpression(u)) && t.isIdentifier(u.property)) {
     const p = u.property.name;
-    if (p === 'name' || p === 'title' || p === 'label' || p === 'heading') return 'Sample title';
+    if (p === 'group' || p === 'category') return 'Daily rituals';
+    if (p === 'name' || p === 'title' || p === 'label' || p === 'heading') return 'Morning Stretch';
     if (p === 'instruction' || p === 'description' || p === 'subtitle') return 'Sample description';
-    if (p === 'intervalMinutes' || p === 'durationSeconds' || p === 'minutes' || p === 'seconds' || p === 'count' || p === 'rate') {
-      return '30';
+    if (p === 'intervalMinutes' || p === 'durationSeconds' || p === 'minutes' || p === 'seconds' || p === 'count' || p === 'total' || p === 'length' || p === 'rate') {
+      return p === 'intervalMinutes' || p === 'minutes' ? '45' : p === 'durationSeconds' || p === 'seconds' ? '30' : '4';
     }
   }
   return undefined;
@@ -950,8 +1243,13 @@ function bindPattern(
   }
 }
 
-function collectSeededDefaults(fn: t.Function, scope: FileScope): Record<string, unknown> {
+function collectSeededDefaults(
+  fn: t.Function,
+  scope: FileScope,
+  initialProps?: Record<string, unknown>
+): Record<string, unknown> {
   const env: Record<string, unknown> = { ...scope.stateEnv };
+  const dummyJsx = new Map<string, t.Expression>();
   for (const param of fn.params) {
     const target = t.isAssignmentPattern(param) ? param.left : param;
     if (t.isObjectPattern(target)) {
@@ -969,7 +1267,79 @@ function collectSeededDefaults(fn: t.Function, scope: FileScope): Record<string,
       if (defVal !== UNKNOWN && defVal !== null) env[param.left.name] = defVal;
     }
   }
+  if (initialProps && fn.params[0]) {
+    const p0 = fn.params[0];
+    const target = t.isAssignmentPattern(p0) ? p0.left : p0;
+    if (t.isObjectPattern(target)) {
+      for (const prop of target.properties) {
+        if (!t.isObjectProperty(prop)) continue;
+        const key = propKeyName(prop.key);
+        if (!key) continue;
+        if (Object.prototype.hasOwnProperty.call(initialProps, key)) {
+          bindPattern(prop.value, initialProps[key], env, dummyJsx, scope);
+        } else if (t.isAssignmentPattern(prop.value)) {
+          bindPattern(prop.value, undefined, env, dummyJsx, scope);
+        }
+      }
+    } else {
+      bindPattern(p0, initialProps, env, dummyJsx, scope);
+    }
+  }
   return env;
+}
+
+function applyBlockDeclarations(fn: t.Function, ctx: BuildContext): BuildContext {
+  if (!t.isBlockStatement(fn.body)) return ctx;
+  const nextEnv: Record<string, unknown> = { ...ctx.env };
+  const nextVars = new Map(ctx.jsxVars);
+
+  for (const stmt of fn.body.body) {
+    if (!t.isVariableDeclaration(stmt)) continue;
+    for (const decl of stmt.declarations) {
+      if (!decl.init) continue;
+      const init = unwrapExpr(decl.init);
+      if (!init) continue;
+
+      if (t.isArrayPattern(decl.id) && (t.isCallExpression(init) || t.isOptionalCallExpression(init))) {
+        const callee = init.callee;
+        const isUseState =
+          t.isIdentifier(callee, { name: 'useState' }) ||
+          (t.isMemberExpression(callee) && t.isIdentifier(callee.property, { name: 'useState' }));
+        if (isUseState && t.isIdentifier(decl.id.elements[0])) {
+          const stateName = decl.id.elements[0].name;
+          const arg0 = init.arguments[0];
+          const initVal = arg0 ? evalValue(arg0, nextEnv, ctx.scope) : undefined;
+          if (
+            initVal !== UNKNOWN &&
+            !(Array.isArray(initVal) && initVal.length === 0 && DATA_COLLECTION_STATE_RE.test(stateName)) &&
+            !(initVal === null && !/^(error|err|loading|disabled)$/i.test(stateName))
+          ) {
+            nextEnv[stateName] = initVal;
+          }
+          continue;
+        }
+      }
+
+      if (containsJsx(init) && !unwrapReactWrapper(init)) {
+        if (t.isIdentifier(decl.id)) nextVars.set(decl.id.name, init as t.Expression);
+        continue;
+      }
+      if (t.isFunction(init)) continue;
+
+      let val = evalValue(init, nextEnv, ctx.scope);
+      if (val === UNKNOWN && t.isLogicalExpression(init) && (init.operator === '??' || init.operator === '||')) {
+        const rhs = evalValue(init.right, nextEnv, ctx.scope);
+        if (typeof rhs === 'string' || typeof rhs === 'number') val = rhs;
+      }
+      if (val !== UNKNOWN) {
+        bindPattern(decl.id, val, nextEnv, nextVars, ctx.scope);
+      } else if (t.isIdentifier(decl.id) && !Object.prototype.hasOwnProperty.call(nextEnv, decl.id.name)) {
+        nextEnv[decl.id.name] = UNKNOWN;
+      }
+    }
+  }
+
+  return { ...ctx, env: nextEnv, jsxVars: nextVars };
 }
 
 function getArrayItems(
@@ -1033,10 +1403,23 @@ function getArrayItems(
       }
       return { isDynamic: true, items: SAMPLE_ITEMS };
     }
+    if (m === 'split') {
+      const target = evalValue(u.callee.object, ctx.env, ctx.scope);
+      if (typeof target === 'string') {
+        const sep = u.arguments[0] ? evalValue(u.arguments[0], ctx.env, ctx.scope) : '\n';
+        return { isDynamic: false, items: target.split(typeof sep === 'string' ? sep : '\n').slice(0, 6) };
+      }
+      return { isDynamic: true, items: ['Workday · 9:00 AM – 5:00 PM', 'Focus breaks enabled'] };
+    }
     if (m === 'filter' || m === 'sort' || m === 'slice') {
+      const evaluated = evalValue(u, ctx.env, ctx.scope);
+      if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 6) };
       return getArrayItems(u.callee.object, ctx);
     }
   }
+
+  const evaluated = evalValue(u, ctx.env, ctx.scope);
+  if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 6) };
 
   return { isDynamic: true, items: SAMPLE_ITEMS };
 }
@@ -1065,7 +1448,8 @@ function expandArrayCall(expr: t.CallExpression, ctx: BuildContext): PreviewNode
       const nextVars = new Map(ctx.jsxVars);
       if (cb.params[0]) bindPattern(cb.params[0], i, nextEnv, nextVars, ctx.scope);
       if (cb.params[1]) bindPattern(cb.params[1], i, nextEnv, nextVars, ctx.scope);
-      out.push(...expandExpr(cbRet, { ...ctx, env: nextEnv, jsxVars: nextVars, depth: ctx.depth + 1 }));
+      const itemCtx = applyBlockDeclarations(cb, { ...ctx, env: nextEnv, jsxVars: nextVars, depth: ctx.depth + 1 });
+      out.push(...expandExpr(cbRet, itemCtx));
     }
     return out;
   }
@@ -1097,7 +1481,8 @@ function expandArrayCall(expr: t.CallExpression, ctx: BuildContext): PreviewNode
     if (cb.params[1] && t.isIdentifier(cb.params[1])) {
       nextEnv[cb.params[1].name] = i;
     }
-    out.push(...expandExpr(retExpr, { ...ctx, env: nextEnv, jsxVars: nextVars, depth: ctx.depth + 1 }));
+    const itemCtx = applyBlockDeclarations(cb, { ...ctx, env: nextEnv, jsxVars: nextVars, depth: ctx.depth + 1 });
+    out.push(...expandExpr(retExpr, itemCtx));
   }
   return out;
 }
@@ -1113,23 +1498,39 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
   // Inline local components defined in the same file
   const localComp = ctx.scope.componentByName.get(tag);
   if (localComp && ctx.depth < ctx.maxDepth) {
-    const nextEnv = collectSeededDefaults(localComp.fn, ctx.scope);
+    const passedProps: Record<string, unknown> = {};
     const nextVars = new Map(ctx.jsxVars);
     for (const attr of el.openingElement.attributes) {
+      if (t.isJSXSpreadAttribute(attr)) {
+        const spread = evalValue(attr.argument, ctx.env, ctx.scope);
+        if (spread && typeof spread === 'object' && !Array.isArray(spread)) {
+          Object.assign(passedProps, spread);
+        }
+        continue;
+      }
       if (!t.isJSXAttribute(attr) || !t.isJSXIdentifier(attr.name)) continue;
       if (!attr.value) {
-        nextEnv[attr.name.name] = true;
+        passedProps[attr.name.name] = true;
       } else if (t.isStringLiteral(attr.value)) {
-        nextEnv[attr.name.name] = attr.value.value;
+        passedProps[attr.name.name] = attr.value.value;
       } else if (t.isJSXExpressionContainer(attr.value)) {
         if (containsJsx(attr.value.expression)) {
           nextVars.set(attr.name.name, attr.value.expression as t.Expression);
         } else {
           const val = evalValue(attr.value.expression, ctx.env, ctx.scope);
-          if (val !== UNKNOWN) nextEnv[attr.name.name] = val;
+          if (val !== UNKNOWN) passedProps[attr.name.name] = val;
         }
       }
     }
+    if (el.children.length > 0) {
+      const childOut = expandJsxChildrenWithText(el.children, ctx);
+      if (childOut.children.length > 0) {
+        nextVars.set('children', t.jsxFragment(t.jsxOpeningFragment(), t.jsxClosingFragment(), el.children));
+      } else if (childOut.text) {
+        passedProps.children = childOut.text;
+      }
+    }
+    const nextEnv = collectSeededDefaults(localComp.fn, ctx.scope, passedProps);
     const inlineTree = extractFromFunction(localComp.fn, {
       ...ctx,
       env: nextEnv,
@@ -1142,21 +1543,68 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
   // Inline imported components across files when resolveImport is supplied
   const imp = ctx.scope.importMap.get(tag);
   const importDepth = ctx.options._importDepth ?? 0;
-  if (imp && ctx.options.resolveImport && importDepth < 2) {
+  if (imp && ctx.options.resolveImport && importDepth < 3) {
     const visited = ctx.options._visitedImports ?? new Set<string>();
     const cacheKey = `${ctx.options.sourceId ?? ''}::${imp.specifier}#${imp.importedName}`;
     if (!visited.has(cacheKey)) {
       const target = resolveImportResult(ctx.options, imp.specifier);
       if (target && !target.source.startsWith('data:')) {
+        const passedProps: Record<string, unknown> = {};
+        const passedJsxProps: Record<string, PreviewNode[]> = {};
+        for (const attr of el.openingElement.attributes) {
+          if (t.isJSXSpreadAttribute(attr)) {
+            const spread = evalValue(attr.argument, ctx.env, ctx.scope);
+            if (spread && typeof spread === 'object' && !Array.isArray(spread)) {
+              Object.assign(passedProps, spread);
+            }
+            continue;
+          }
+          if (!t.isJSXAttribute(attr) || !t.isJSXIdentifier(attr.name)) continue;
+          const k = attr.name.name;
+          if (!attr.value) {
+            passedProps[k] = true;
+          } else if (t.isStringLiteral(attr.value)) {
+            passedProps[k] = attr.value.value;
+          } else if (t.isJSXExpressionContainer(attr.value)) {
+            if (containsJsx(attr.value.expression)) {
+              const expanded = expandExpr(attr.value.expression, ctx);
+              if (expanded.length > 0) passedJsxProps[k] = expanded;
+            } else {
+              const val = evalValue(attr.value.expression, ctx.env, ctx.scope);
+              if (val !== UNKNOWN) {
+                passedProps[k] = val;
+              } else {
+                const rawExpr = unwrapExpr(attr.value.expression);
+                if (t.isIdentifier(rawExpr)) {
+                  const assetSpec = ctx.scope.assetImportMap.get(rawExpr.name);
+                  if (assetSpec) {
+                    const resolved = resolveImportResult(ctx.options, assetSpec)?.source;
+                    if (resolved) passedProps[k] = resolved;
+                  }
+                }
+              }
+            }
+          }
+        }
+        if (el.children.length > 0) {
+          const childOut = expandJsxChildrenWithText(el.children, ctx);
+          if (childOut.children.length > 0) {
+            passedJsxProps.children = childOut.children;
+          } else if (childOut.text) {
+            passedProps.children = childOut.text;
+          }
+        }
         const nextVisited = new Set(visited);
         nextVisited.add(cacheKey);
         const importedTree = ctx.extractImported(target.source, {
           targetComponent: imp.importedName === 'default' ? undefined : imp.importedName,
           resolveImport: ctx.options.resolveImport,
           sourceId: target.id,
+          props: passedProps,
           maxDepth: Math.max(3, ctx.maxDepth - ctx.depth),
           _visitedImports: nextVisited,
           _importDepth: importDepth + 1,
+          ...(Object.keys(passedJsxProps).length > 0 ? { _jsxProps: passedJsxProps } : {}),
         });
         if (importedTree) {
           const foreign = markForeignSubtree(importedTree);
@@ -1282,25 +1730,36 @@ function expandJsxChildren(rawChildren: t.JSXElement['children'], ctx: BuildCont
   return expandJsxChildrenWithText(rawChildren, ctx).children;
 }
 
-function expandJsxChildrenWithText(
-  rawChildren: t.JSXElement['children'],
-  ctx: BuildContext
-): { text?: string; children: PreviewNode[] } {
-  const textParts: string[] = [];
-  const children: PreviewNode[] = [];
+type ChildEntry = { kind: 'node'; node: PreviewNode } | { kind: 'text'; raw: string };
+
+function cleanJsxText(raw: string): string {
+  if (!/[\r\n]/.test(raw)) return raw.replace(/[ \t]+/g, ' ');
+  const lines = raw.split(/\r\n|\n|\r/);
+  const cleaned: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].replace(/\t/g, ' ');
+    if (i > 0) line = line.replace(/^[ ]+/, '');
+    if (i < lines.length - 1) line = line.replace(/[ ]+$/, '');
+    if (line.length > 0) cleaned.push(line);
+  }
+  return cleaned.join(' ');
+}
+
+function expandJsxChildEntries(rawChildren: t.JSXElement['children'], ctx: BuildContext): ChildEntry[] {
+  const entries: ChildEntry[] = [];
   const matchedGroups = new Set<string>();
 
   for (const child of rawChildren) {
     if (ctx.nodeCount.value >= ctx.maxNodes) break;
     if (t.isJSXText(child)) {
-      const collapsed = child.value.replace(/\s+/g, ' ').trim();
-      if (collapsed) textParts.push(collapsed);
+      const text = cleanJsxText(child.value);
+      if (text) entries.push({ kind: 'text', raw: text });
     } else if (t.isJSXElement(child)) {
-      children.push(...buildElementNode(child, ctx));
+      for (const n of buildElementNode(child, ctx)) {
+        entries.push({ kind: 'node', node: n });
+      }
     } else if (t.isJSXFragment(child)) {
-      const res = expandJsxChildrenWithText(child.children, ctx);
-      if (res.text) textParts.push(res.text);
-      children.push(...res.children);
+      entries.push(...expandJsxChildEntries(child.children, ctx));
     } else if (t.isJSXExpressionContainer(child)) {
       const expr = child.expression;
       if (t.isJSXEmptyExpression(expr)) continue;
@@ -1320,18 +1779,70 @@ function expandJsxChildrenWithText(
 
       const nodes = expandExpr(expr, ctx);
       if (nodes.length > 0) {
-        children.push(...nodes);
+        for (const n of nodes) {
+          entries.push({ kind: 'node', node: n });
+        }
       } else {
         const txt = extractExprText(expr, ctx.env, ctx.scope);
-        if (txt) textParts.push(txt);
+        if (txt) entries.push({ kind: 'text', raw: txt });
       }
     }
   }
 
-  return {
-    ...(textParts.length > 0 ? { text: textParts.join(' ') } : {}),
-    children,
+  return entries;
+}
+
+function expandJsxChildrenWithText(
+  rawChildren: t.JSXElement['children'],
+  ctx: BuildContext
+): { text?: string; children: PreviewNode[] } {
+  const entries = expandJsxChildEntries(rawChildren, ctx);
+  const hasElements = entries.some((e) => e.kind === 'node');
+
+  if (!hasElements) {
+    const joined = entries
+      .map((e) => (e.kind === 'text' ? e.raw : ''))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return { ...(joined ? { text: joined } : {}), children: [] };
+  }
+
+  const children: PreviewNode[] = [];
+  let textRun = '';
+  const flushText = () => {
+    if (textRun && /\S/.test(textRun)) {
+      children.push({
+        tag: '#text',
+        elementIndex: -1,
+        className: '',
+        text: textRun,
+        children: [],
+      });
+    } else if (textRun === ' ' && children.length > 0) {
+      // Preserve single inline space between adjacent element siblings (e.g. `<a>x</a> <b>y</b>`)
+      children.push({
+        tag: '#text',
+        elementIndex: -1,
+        className: '',
+        text: ' ',
+        children: [],
+      });
+    }
+    textRun = '';
   };
+
+  for (const entry of entries) {
+    if (entry.kind === 'text') {
+      textRun += entry.raw;
+    } else {
+      flushText();
+      children.push(entry.node);
+    }
+  }
+  flushText();
+
+  return { children };
 }
 
 function expandExpr(node: t.Node | null | undefined, ctx: BuildContext): PreviewNode[] {
@@ -1364,6 +1875,9 @@ function expandExpr(node: t.Node | null | undefined, ctx: BuildContext): Preview
     const cond = evalCondition(u.test, ctx.env, ctx.scope);
     if (cond === true) return expandExpr(u.consequent, ctx);
     if (cond === false) return expandExpr(u.alternate, ctx);
+    if (isModalOverlayNode(u.consequent) && !isModalOverlayNode(u.alternate)) {
+      return expandExpr(u.alternate, { ...ctx, depth: ctx.depth + 1 });
+    }
     const left = expandExpr(u.consequent, { ...ctx, depth: ctx.depth + 1 });
     const right = expandExpr(u.alternate, { ...ctx, depth: ctx.depth + 1 });
     if (isEmptyCheckTest(u.test) && right.length > 0) return right;
@@ -1396,6 +1910,8 @@ function expandExpr(node: t.Node | null | undefined, ctx: BuildContext): Preview
   }
 
   if (t.isIdentifier(u)) {
+    const jsxProp = ctx.options._jsxProps?.[u.name];
+    if (jsxProp) return jsxProp;
     if (ctx.visitedVars.has(u.name)) return [];
     const target = ctx.jsxVars.get(u.name) ?? ctx.scope.jsxVarMap.get(u.name);
     if (target) {
@@ -1426,6 +1942,7 @@ function expandExpr(node: t.Node | null | undefined, ctx: BuildContext): Preview
 function extractFromFunction(fn: t.Function, ctx: BuildContext): PreviewNode[] {
   const returns = getReturnsForFn(fn);
   if (returns.length === 0) return [];
+  const blockCtx = applyBlockDeclarations(fn, ctx);
 
   let bestNodes: PreviewNode[] = [];
   let bestScore = -1;
@@ -1433,8 +1950,8 @@ function extractFromFunction(fn: t.Function, ctx: BuildContext): PreviewNode[] {
   for (const ret of returns) {
     if (!ret.expr) continue;
     const trialCtx: BuildContext = {
-      ...ctx,
-      nodeCount: { value: ctx.nodeCount.value },
+      ...blockCtx,
+      nodeCount: { value: blockCtx.nodeCount.value },
     };
     const nodes = expandExpr(ret.expr, trialCtx);
     const weight = countPreviewNodes(nodes) * (ret.unconditional ? 3 : 1);
@@ -1493,7 +2010,7 @@ export function createPreviewExtractor(
       const program = parseModule(source);
       const scope = buildFileScope(program);
       const maxDepth = options.maxDepth ?? 6;
-      const maxNodes = 220;
+      const maxNodes = 280;
 
       // Re-export barrel file (`export { X as Y } from './...'`) with no local components
       if (scope.components.length === 0 && scope.reexports.length > 0) {
@@ -1529,7 +2046,7 @@ export function createPreviewExtractor(
 
       const comp = pickPrimaryComponent(scope, options.targetComponent);
       if (comp) {
-        const env = collectSeededDefaults(comp.fn, scope);
+        const env = collectSeededDefaults(comp.fn, scope, options.props);
         const ctx: BuildContext = {
           scope,
           env,

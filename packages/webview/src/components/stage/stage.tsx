@@ -221,7 +221,6 @@ export function Stage({
   const panelTitle = PANELS.find((p) => p.kind === panel)?.title ?? '';
   const tagChip = `<${tagName}>`;
   const viewportPreset = VIEWPORTS.find((v) => v.id === stage.viewport) ?? VIEWPORTS[0];
-  const frameWidth = viewportPreset.id === 'responsive' ? viewportPreset.widthClass : `${viewportPreset.widthClass} max-w-full`;
   const widthLabel = viewportPreset.id === 'responsive' ? 'Fluid' : `${viewportPreset.label}px`;
 
   const toolbarSize = toolbarMeasured ?? {
@@ -250,11 +249,16 @@ export function Stage({
   };
 
   const renderTree = (node: PreviewNode, isRoot = false, siblingIdx = 0): React.ReactNode => {
+    if (node.tag === '#text') {
+      return <React.Fragment key={`text-${siblingIdx}`}>{node.text}</React.Fragment>;
+    }
     const isTarget =
       node.elementIndex >= 0 &&
       (stage.targetElement
         ? stage.targetElement === node.tag && (stage.targetIndex ?? 0) === node.elementIndex
-        : isRoot);
+        : isRoot &&
+          (node.elementIndex === 0 || Boolean(meta?.cva?.hasCva)) &&
+          (Boolean(rawClasses) || !node.className));
     const El = renderTagForNode(node.tag, meta?.componentName);
     const elTag = String(El);
     const nodeRawClasses = isTarget ? rawClasses : node.className;
@@ -325,6 +329,29 @@ export function Stage({
     );
   const matrixCombos = matrixMode && meta?.cva ? buildVariantMatrix(meta.cva) : [];
   const a11ySmall = anchor ? isSmallTouchTarget(anchor.width, anchor.height) : false;
+  const frameWidth =
+    viewportPreset.id === 'responsive'
+      ? isRichLayout && !matrixMode
+        ? 'w-full max-w-6xl'
+        : viewportPreset.widthClass
+      : `${viewportPreset.widthClass} max-w-full`;
+  const availInnerWidth = Math.max(320, (size.width || 800) - 88);
+  const richZoom =
+    isRichLayout && !matrixMode && viewportPreset.id === 'responsive'
+      ? Math.min(1, Math.max(0.45, availInnerWidth / 1080))
+      : 1;
+  const previewScopeStyle: React.CSSProperties = {
+    containerType: 'inline-size',
+    containerName: 'retune-stage',
+    ...(isRichLayout && !matrixMode
+      ? {
+          transform: 'translateZ(0)',
+          ...(viewportPreset.id === 'responsive' && richZoom < 0.99
+            ? { width: '1080px', zoom: richZoom }
+            : {}),
+        }
+      : {}),
+  };
 
   return (
     <div
@@ -428,7 +455,7 @@ export function Stage({
           >
             <div
               className={`retune-preview-scope ${isRichLayout ? 'w-full min-h-[260px]' : ''}`}
-              style={isRichLayout ? { transform: 'translateZ(0)' } : undefined}
+              style={previewScopeStyle}
             >
               {meta?.workspaceCss && <style>{meta.workspaceCss}</style>}
               {useTreePreview && meta?.previewTree ? (

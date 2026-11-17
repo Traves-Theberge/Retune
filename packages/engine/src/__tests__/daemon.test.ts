@@ -86,11 +86,15 @@ export function Badge({ label }: BadgeProps) { return <div className="p-1"><span
     expect(data.updatedContent).toContain('brand: "bg-purple-600 text-white"');
   });
 
-  it('scopes project CSS and resolves relative barrel exports via inspectComponentFile', () => {
-    const scoped = scopePreviewCss(':root { --ink: #203b30; } body { margin: 0; } .hero-panel { min-height: 100dvh; }');
-    expect(scoped).toContain('@layer components');
+  it('scopes project CSS unlayered and rewrites width media queries for retune-stage container queries', () => {
+    const scoped = scopePreviewCss(
+      ':root { --ink: #203b30; } body { margin: 0; } .hero-panel { min-height: 100dvh; } @media (max-width: 900px) { .app-shell { display: block; } } @media (prefers-reduced-motion: reduce) { .hero-panel { animation: none; } }'
+    );
+    expect(scoped).not.toContain('@layer components');
     expect(scoped).toContain('.retune-preview-scope{');
     expect(scoped).toContain('.retune-preview-scope .hero-panel');
+    expect(scoped).toContain('@container retune-stage (max-width: 900px){.retune-preview-scope .app-shell');
+    expect(scoped).toContain('@media (prefers-reduced-motion: reduce)');
     expect(scoped).toContain('100%');
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'retune-proj-'));

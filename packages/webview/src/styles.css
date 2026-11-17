@@ -244,16 +244,15 @@ body,
   }
 }
 
-@layer utilities {
-  .retune-preview-scope .app-shell > .sidebar {
-    position: sticky;
-    top: 0;
-    height: auto;
-    min-height: 100%;
-    align-self: stretch;
-  }
-  .retune-preview-scope .main-column {
-    margin-left: 0;
-  }
+.retune-preview-scope .app-shell > .sidebar {
+  position: sticky;
+  top: 0;
+  height: auto;
+  min-height: 100%;
+  align-self: stretch;
+}
+
+.retune-preview-scope .main-column {
+  margin-left: 0;
 }
 

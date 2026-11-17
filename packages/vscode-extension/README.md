@@ -4,25 +4,25 @@
   <img src="../../docs/assets/retune-logo.svg" alt="Retune Logo" width="84" />
 </p>
 
-**Retune** is a zero-config visual component tuner, CVA variant inspector, and Scalar-powered OpenAPI console built for React & Tailwind CSS workflows in VS Code and Antigravity IDE.
+Visually edit React, Tailwind CSS, and `cva()` components right inside VS Code and Antigravity IDE, and write clean updates back to your `.tsx` and `.jsx` files.
 
 ## Features
 
-- **The Stage (Editor Tab & Split View)**: Inspect multi-element JSX hierarchies (`PreviewNode`), drag box-model width/height resize handles, simulate `:hover` / `:focus` / `:active` states, compare all `cva` variant combinations in the Variant Matrix, and view live WCAG contrast & touch-target badges.
-- **Activity Bar Inspector Sidebar**: Pick any element from the Component/JSX element list (synced bidirectionally with your editor cursor), scrub numeric layout/typography tokens, edit or add new `cva()` variants, undo/redo up to 100 steps, and click **Sync** (`Ctrl/Cmd+S`).
-- **Non-Lossy Minimal Splices (`@retune/core`)**: Computed with `@babel/parser` and applied as targeted `WorkspaceEdit` splices so comments, formatting, imports, and dynamic `cn()`/`clsx()` arguments remain untouched.
-- **Inline CodeLenses & Context Menus**: Right-click any JSX file/component or click **Retune: Tune `<Component />` in Stage** directly above exported components and `cva(...)` calls.
+- **Visual Stage (Split View or Editor Tab)**: Click elements in your component tree, drag width and height handles, edit text inline, preview `:hover` / `:focus` / `:active` states, compare `cva()` combinations in the Variant Matrix, and check WCAG contrast and touch-target sizes.
+- **Inspector Sidebar**: Stay synced with your cursor in code, adjust layout, spacing, typography, colors, and shadows, edit or add `cva()` variants, undo/redo up to 100 steps, and press `Ctrl+S` (`Cmd+S`) to save.
+- **Minimal Source Edits**: Updates only the exact Tailwind `className` and `cva()` strings you changed so comments, imports, formatting, and helpers like `cn()` or `clsx()` stay untouched.
+- **Inline CodeLenses & Context Menus**: Open the Stage from right-click menus or click **Retune: Tune `<Component />` in Stage** directly above your components and `cva()` calls.
 
 ## Commands
 
 | Command | Shortcut | Description |
 | :--- | :--- | :--- |
-| `Retune: Open Visual Stage` | `Ctrl+Shift+R` / `Cmd+Shift+R` | Opens The Stage using your configured `retune.stage.openMode`. |
-| `Retune: Tune Component in Stage` | Editor Right-Click / CodeLens | Targets the component or JSX element under your cursor in The Stage. |
-| `Retune: Open Visual Stage in Editor Tab` | Editor Title Bar | Opens The Stage as an active Editor Tab. |
-| `Retune: Open Visual Stage in Split Editor` | Context Submenu / Palette | Opens The Stage beside the active `.tsx` editor. |
-| `Retune: Inspect Component AST & Props` | Context Submenu / CodeLens | Opens the extracted CVA AST, TypeScript props, and source view. |
-| `Retune: Open Scalar API Console Tab` | Context Submenu / Palette | Opens the embedded Scalar OpenAPI 3.1 console tab. |
+| `Retune: Open Visual Stage` | `Ctrl+Shift+R` / `Cmd+Shift+R` | Opens The Stage using your `retune.stage.openMode` setting. |
+| `Retune: Tune Component in Stage` | Editor Right-Click / CodeLens | Opens The Stage focused on the component or element under your cursor. |
+| `Retune: Open Visual Stage in Editor Tab` | Editor Title Bar | Opens The Stage in a full editor tab. |
+| `Retune: Open Visual Stage in Split Editor` | Context Submenu / Palette | Opens The Stage beside your active `.tsx` or `.jsx` file. |
+| `Retune: Inspect Component AST & Props` | Context Submenu / CodeLens | Opens the extracted `cva()` variants and TypeScript props view. |
+| `Retune: Open Scalar API Console Tab` | Context Submenu / Palette | Opens the local Scalar OpenAPI reference tab. |
 
 ## License
 

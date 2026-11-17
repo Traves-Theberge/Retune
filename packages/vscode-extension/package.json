@@ -1,7 +1,7 @@
 {
   "name": "retune-vscode",
-  "displayName": "Retune — Visual Component Stage & Scalar API Console",
-  "description": "Zero-config visual component tuner, CVA variant inspector, and Scalar-powered API console for VS Code.",
+  "displayName": "Retune — Visual React & Tailwind Editor",
+  "description": "Visually edit React, Tailwind CSS, and CVA components and write clean changes back to your code.",
   "version": "1.0.0",
   "publisher": "retune",
   "license": "MIT",

@@ -38,9 +38,6 @@ const SAFE_HTML_TAGS = new Set([
 const VOID_TAGS = new Set([
   'input', 'img', 'hr', 'br', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon',
 ]);
-const SVG_CHILD_TAGS = new Set([
-  'g', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon',
-]);
 const PAGE_ROOT_TAGS = new Set(['main', 'section', 'article', 'aside', 'form', 'dialog', 'nav']);
 
 function countTreeNodes(node: PreviewNode | null | undefined): number {
@@ -75,6 +72,25 @@ function sameSize(a: Size | null, b: Size): boolean {
 function renderTagForNode(tag: string, fallbackComponentName?: string): keyof React.JSX.IntrinsicElements {
   if (SAFE_HTML_TAGS.has(tag)) return tag as keyof React.JSX.IntrinsicElements;
   return previewTag(tag, fallbackComponentName) as keyof React.JSX.IntrinsicElements;
+}
+
+function mergeTargetClasses(
+  nodeClass: string,
+  baselineClass: string,
+  currentClass: string,
+  isDefaultRoot: boolean
+): string {
+  if (isDefaultRoot && !currentClass && nodeClass) {
+    return nodeClass;
+  }
+  if (!nodeClass || nodeClass === baselineClass) {
+    return currentClass;
+  }
+  const baselineSet = new Set(baselineClass.split(/\s+/).filter(Boolean));
+  const dynamicTokens = nodeClass
+    .split(/\s+/)
+    .filter((tok) => Boolean(tok) && !baselineSet.has(tok));
+  return Array.from(new Set([...dynamicTokens, ...currentClass.split(/\s+/).filter(Boolean)])).join(' ');
 }
 
 function buildVariantMatrix(cva: CvaMetadata, limit = 24): Record<string, string>[] {
@@ -113,13 +129,34 @@ export function Stage({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ width: 800, height: 600 });
   const [anchor, setAnchor] = useState<Rect | null>(null);
+  const [cssSize, setCssSize] = useState<Size | null>(null);
   const [toolbarMeasured, setToolbarMeasured] = useState<Size | null>(null);
   const [contrast, setContrast] = useState<number | null>(null);
-  const [selected, setSelected] = useState(false);
+  const [selected, setSelected] = useState(true);
   const [panel, setPanel] = useState<PanelKind | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const dragRef = useRef<{ axis: 'width' | 'height'; startPos: number; baseVal: number } | null>(null);
+  const selectedDomRef = useRef<HTMLElement | null>(null);
+  const lastClickRef = useRef<{ name: string; index: number } | null>(null);
+  const prevFileRef = useRef<string | undefined>(meta?.filePath);
+  const activeScaleRef = useRef(1);
+  const dragRef = useRef<{ axis: 'width' | 'height'; startPos: number; baseVal: number; scale: number } | null>(null);
+
+  useEffect(() => {
+    setSelected(true);
+    if (prevFileRef.current !== meta?.filePath) {
+      prevFileRef.current = meta?.filePath;
+      selectedDomRef.current = null;
+      lastClickRef.current = null;
+      return;
+    }
+    const clicked = lastClickRef.current;
+    if (clicked && clicked.name === stage.targetElement && clicked.index === (stage.targetIndex ?? 0)) {
+      return;
+    }
+    selectedDomRef.current = null;
+    lastClickRef.current = null;
+  }, [stage.targetElement, stage.targetIndex, meta?.filePath]);
 
   const measure = () => {
     const c = containerRef.current;
@@ -129,13 +166,23 @@ export function Stage({
     const next = { width: c.clientWidth, height: c.clientHeight };
     setSize((prev) => (sameSize(prev, next) ? prev : next));
     if (e) {
+      const targetDom =
+        (selectedDomRef.current && e.contains(selectedDomRef.current) ? selectedDomRef.current : null) ??
+        (e.querySelector('[data-retune-target="true"]') as HTMLElement | null) ??
+        (e.querySelector('.retune-preview-scope')?.firstElementChild as HTMLElement | null) ??
+        e;
       const cr = c.getBoundingClientRect();
-      const er = e.getBoundingClientRect();
+      const er = targetDom.getBoundingClientRect();
       const rect = { left: er.left - cr.left, top: er.top - cr.top, width: er.width, height: er.height };
       setAnchor((prev) => (sameRect(prev, rect) ? prev : rect));
+      const scale = e.querySelector('.retune-preview-scope')?.contains(targetDom) ? activeScaleRef.current || 1 : 1;
+      const measuredCss = {
+        width: Math.max(1, Math.round(er.width / scale)),
+        height: Math.max(1, Math.round(er.height / scale)),
+      };
+      setCssSize((prev) => (sameSize(prev, measuredCss) ? prev : measuredCss));
 
-      const targetDom = e.firstElementChild as HTMLElement | null;
-      if (targetDom && typeof window.getComputedStyle === 'function') {
+      if (typeof window.getComputedStyle === 'function') {
         const cs = window.getComputedStyle(targetDom);
         const backdrop: [number, number, number] = tone === 'light' ? [255, 255, 255] : [18, 18, 22];
         const ratio = contrastRatio(cs.color, cs.backgroundColor, backdrop);
@@ -184,9 +231,9 @@ export function Stage({
     const onMove = (e: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
-      const delta = drag.axis === 'width' ? e.clientX - drag.startPos : e.clientY - drag.startPos;
+      const delta = (drag.axis === 'width' ? e.clientX - drag.startPos : e.clientY - drag.startPos) / (drag.scale || 1);
       const prefix = drag.axis === 'width' ? 'w' : 'h';
-      const max = drag.axis === 'width' ? 600 : 200;
+      const max = drag.axis === 'width' ? 1400 : 1200;
       const val = scrubValue(drag.baseVal, delta, 2, 16, max);
       store.setClasses(
         setArbitrary(store.stage.harmonicsClass, prefix, `${val}px`, {
@@ -212,6 +259,7 @@ export function Stage({
   const disabled = Boolean(stage.propValues.disabled);
   const label = String(stage.propValues.label ?? '') || meta?.componentName || '';
   const tagName = previewTag(stage.targetElement, meta?.componentName);
+  const displayTag = stage.targetElement || meta?.previewTree?.sourceTag || meta?.previewTree?.tag || tagName;
   const Tag = tagName as keyof React.JSX.IntrinsicElements;
   const rawClasses = comparing ? store.baselinePreviewClass : store.previewClass;
   const classes = resolveSimulatedClasses(rawClasses, pseudoState);
@@ -219,7 +267,7 @@ export function Stage({
   const matrixMode = Boolean(stage.matrixMode && hasVariants);
   const panels = availablePanels(hasVariants);
   const panelTitle = PANELS.find((p) => p.kind === panel)?.title ?? '';
-  const tagChip = `<${tagName}>`;
+  const tagChip = `<${displayTag}>`;
   const viewportPreset = VIEWPORTS.find((v) => v.id === stage.viewport) ?? VIEWPORTS[0];
   const widthLabel = viewportPreset.id === 'responsive' ? 'Fluid' : `${viewportPreset.label}px`;
 
@@ -244,55 +292,97 @@ export function Stage({
   const startHandleDrag = (axis: 'width' | 'height', e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    const baseVal = axis === 'width' ? Math.round(anchor?.width ?? 120) : Math.round(anchor?.height ?? 36);
-    dragRef.current = { axis, startPos: axis === 'width' ? e.clientX : e.clientY, baseVal };
+    const scale = activeScaleRef.current || 1;
+    const baseVal =
+      axis === 'width'
+        ? cssSize?.width ?? Math.round((anchor?.width ?? 120) / scale)
+        : cssSize?.height ?? Math.round((anchor?.height ?? 36) / scale);
+    dragRef.current = { axis, startPos: axis === 'width' ? e.clientX : e.clientY, baseVal, scale };
   };
 
-  const renderTree = (node: PreviewNode, isRoot = false, siblingIdx = 0): React.ReactNode => {
+  let claimedTarget = false;
+  const renderTree = (
+    node: PreviewNode,
+    isRoot = false,
+    siblingIdx = 0,
+    ancestorMatchedTarget = false,
+    inheritedSubcomp?: string
+  ): React.ReactNode => {
     if (node.tag === '#text') {
       return <React.Fragment key={`text-${siblingIdx}`}>{node.text}</React.Fragment>;
     }
-    const isTarget =
+    const effectiveTag = node.sourceTag ?? node.tag;
+    const subcompKey =
+      node.sourceTag && node.elementIndex >= 0 ? `${node.sourceTag}:${node.elementIndex}` : undefined;
+    const isSubcompRoot = Boolean(subcompKey && subcompKey !== inheritedSubcomp);
+    const hasExplicitTarget = Boolean(stage.targetElement);
+    const rawMatchesTarget =
       node.elementIndex >= 0 &&
-      (stage.targetElement
-        ? stage.targetElement === node.tag && (stage.targetIndex ?? 0) === node.elementIndex
-        : isRoot &&
-          (node.elementIndex === 0 || Boolean(meta?.cva?.hasCva)) &&
-          (Boolean(rawClasses) || !node.className));
+      (hasExplicitTarget
+        ? stage.targetElement === effectiveTag && (stage.targetIndex ?? 0) === node.elementIndex
+        : isRoot);
+    const isTarget = rawMatchesTarget && !ancestorMatchedTarget;
+    const claimTargetAttr = isTarget && !claimedTarget;
+    if (claimTargetAttr) claimedTarget = true;
+
     const El = renderTagForNode(node.tag, meta?.componentName);
     const elTag = String(El);
-    const nodeRawClasses = isTarget ? rawClasses : node.className;
+    const isDefaultRoot = !hasExplicitTarget && isRoot;
+    const nodeRawClasses = isTarget
+      ? mergeTargetClasses(node.className, store.stage.baselineClass, rawClasses, isDefaultRoot)
+      : node.className;
     const nodeClasses = resolveSimulatedClasses(nodeRawClasses, pseudoState);
     const nodeStyle = {
       ...(node.style ?? {}),
       ...parseArbitraryStyle(nodeRawClasses, pseudoState),
     };
     const domProps = toSafeDomProps(node.attrs, elTag);
-    const isSvgPrimitive = SVG_CHILD_TAGS.has(elTag);
     const isVoid = VOID_TAGS.has(elTag);
     const key = `${node.tag}-${node.elementIndex}-${siblingIdx}`;
 
     const commonProps: Record<string, unknown> = {
       ...domProps,
+      ...(claimTargetAttr ? { 'data-retune-target': 'true' } : {}),
+      ...(isSubcompRoot ? { 'data-retune-subcomp': subcompKey } : {}),
       className: `${nodeClasses} ${
         isTarget && !isRoot ? 'outline outline-1 outline-accent/80 outline-offset-2' : ''
       } ${disabled && isRoot ? 'opacity-50' : ''}`.trim(),
       style: Object.keys(nodeStyle).length > 0 ? nodeStyle : undefined,
     };
 
-    if (!isSvgPrimitive) {
-      commonProps.onClick = (e: React.MouseEvent) => {
-        if (elTag === 'a') e.preventDefault();
-        e.stopPropagation();
-        if (node.elementIndex >= 0) {
-          store.selectElement({ name: node.tag, index: node.elementIndex });
-        }
+    if (node.elementIndex >= 0) {
+      const selectClickedNode = (targetEl: EventTarget | null) => {
+        const elDom = targetEl as HTMLElement | null;
+        const subRoot =
+          subcompKey && elDom && typeof elDom.closest === 'function'
+            ? (elDom.closest(`[data-retune-subcomp="${subcompKey}"]`) as HTMLElement | null)
+            : null;
+        selectedDomRef.current = subRoot ?? elDom;
+        lastClickRef.current = { name: effectiveTag, index: node.elementIndex };
+        store.selectElement({ name: effectiveTag, index: node.elementIndex });
         setSelected(true);
         setMenu(null);
       };
-      if (elTag === 'form') {
-        commonProps.onSubmit = (e: React.FormEvent) => e.preventDefault();
-      }
+      commonProps.onClick = (e: React.MouseEvent) => {
+        if (elTag === 'a') e.preventDefault();
+        e.stopPropagation();
+        selectClickedNode(e.currentTarget);
+      };
+      commonProps.onDoubleClick = (e: React.MouseEvent) => {
+        if (elTag === 'a') e.preventDefault();
+        e.stopPropagation();
+        selectClickedNode(e.currentTarget);
+        setPanel('text');
+      };
+      commonProps.onContextMenu = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        selectClickedNode(e.currentTarget);
+        setMenu({ x: e.clientX, y: e.clientY });
+      };
+    }
+    if (elTag === 'form') {
+      commonProps.onSubmit = (e: React.FormEvent) => e.preventDefault();
     }
 
     if (isVoid) {
@@ -311,7 +401,9 @@ export function Stage({
     return (
       <El key={key} {...(commonProps as any)}>
         {node.children.length > 0
-          ? node.children.map((child, idx) => renderTree(child, false, idx))
+          ? node.children.map((child, idx) =>
+              renderTree(child, false, idx, ancestorMatchedTarget || isTarget, subcompKey ?? inheritedSubcomp)
+            )
           : leafFallback}
       </El>
     );
@@ -328,7 +420,6 @@ export function Stage({
             (meta.previewTree.tag === 'div' && meta.previewTree.children.length > 0)))
     );
   const matrixCombos = matrixMode && meta?.cva ? buildVariantMatrix(meta.cva) : [];
-  const a11ySmall = anchor ? isSmallTouchTarget(anchor.width, anchor.height) : false;
   const frameWidth =
     viewportPreset.id === 'responsive'
       ? isRichLayout && !matrixMode
@@ -340,6 +431,22 @@ export function Stage({
     isRichLayout && !matrixMode && viewportPreset.id === 'responsive'
       ? Math.min(1, Math.max(0.45, availInnerWidth / 1080))
       : 1;
+  activeScaleRef.current = viewportPreset.id === 'responsive' && richZoom < 0.99 ? richZoom : 1;
+  const a11ySmall = cssSize
+    ? isSmallTouchTarget(cssSize.width, cssSize.height)
+    : anchor
+      ? isSmallTouchTarget(anchor.width, anchor.height)
+      : false;
+  const dimWidth = cssSize?.width ?? (anchor ? Math.round(anchor.width / (activeScaleRef.current || 1)) : null);
+  const dimHeight = cssSize?.height ?? (anchor ? Math.round(anchor.height / (activeScaleRef.current || 1)) : null);
+  const dimText = dimWidth !== null && dimHeight !== null ? `${dimWidth} × ${dimHeight}` : 'auto × auto';
+  const dimBadgeText = [
+    dimText,
+    contrast !== null ? `${contrastGrade(contrast)} ${contrast}:1` : null,
+    a11ySmall ? 'tap <44' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const previewScopeStyle: React.CSSProperties = {
     containerType: 'inline-size',
     containerName: 'retune-stage',
@@ -379,13 +486,20 @@ export function Stage({
         }`}
       >
         <span className="h-px flex-1 bg-current opacity-25" />
-        <span>{matrixMode ? `Variant Matrix (${matrixCombos.length})` : widthLabel}</span>
+        <span>
+          {matrixMode
+            ? `Variant Matrix (${matrixCombos.length})`
+            : dimWidth !== null && dimHeight !== null
+              ? `${widthLabel} · ${dimWidth} × ${dimHeight}px`
+              : widthLabel}
+        </span>
         {pseudoState !== 'none' && <span>{`· :${pseudoState}`}</span>}
         <span className="h-px flex-1 bg-current opacity-25" />
       </div>
 
       <div
         ref={frameRef}
+        onScroll={measure}
         className={`relative flex rounded-2xl border shadow-2xl transition-all duration-150 ${frameWidth} ${
           isRichLayout && !matrixMode
             ? 'max-h-[calc(100vh-160px)] min-h-[320px] items-start justify-start overflow-auto p-5'
@@ -470,9 +584,22 @@ export function Stage({
               )}
             </div>
 
-            {/* Direct box-model drag handles when selected */}
-            {selected && (
+            {/* SSR / pre-layout fallback handles & badges until ResizeObserver measures anchor */}
+            {selected && !anchor && !matrixMode && (
               <>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-7 left-0 z-10 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm"
+                >
+                  {tagChip}
+                </span>
+                <span
+                  data-testid="dimension-badge"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-7 left-1/2 z-10 -translate-x-1/2 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm whitespace-nowrap"
+                >
+                  {dimBadgeText}
+                </span>
                 <div
                   role="separator"
                   aria-label="Resize width"
@@ -504,23 +631,48 @@ export function Stage({
           <span
             aria-hidden="true"
             className="pointer-events-none absolute z-10 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm"
-            style={{ left: anchor.left - 4, top: Math.max(0, anchor.top - 28) }}
+            style={{
+              left: Math.max(8, Math.min(Math.max(8, size.width - 140), anchor.left - 4)),
+              top: Math.max(8, Math.min(Math.max(8, size.height - 88), anchor.top - 26)),
+            }}
           >
             {tagChip}
           </span>
           <span
+            data-testid="dimension-badge"
             aria-hidden="true"
             className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md bg-accent px-1.5 py-1 font-mono text-[11px] leading-none text-accent-fg shadow-sm whitespace-nowrap"
-            style={{ left: anchor.left + anchor.width / 2, top: anchor.top + anchor.height + 10 }}
+            style={{
+              left: Math.max(64, Math.min(Math.max(64, size.width - 64), anchor.left + anchor.width / 2)),
+              top: Math.max(32, Math.min(Math.max(32, size.height - 64), anchor.top + anchor.height + 8)),
+            }}
           >
-            {[
-              `${Math.round(anchor.width)} × ${Math.round(anchor.height)}`,
-              contrast !== null ? `${contrastGrade(contrast)} ${contrast}:1` : null,
-              a11ySmall ? 'tap <44' : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+            {dimBadgeText}
           </span>
+          <div
+            role="separator"
+            aria-label="Resize width"
+            data-handle="width"
+            title="Drag horizontally to resize width"
+            onPointerDown={(e) => startHandleDrag('width', e)}
+            className="absolute z-10 h-5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-accent shadow-sm"
+            style={{
+              left: Math.max(16, Math.min(Math.max(16, size.width - 14), anchor.left + anchor.width + 6)),
+              top: Math.max(24, Math.min(Math.max(24, size.height - 80), anchor.top + anchor.height / 2)),
+            }}
+          />
+          <div
+            role="separator"
+            aria-label="Resize height"
+            data-handle="height"
+            title="Drag vertically to resize height"
+            onPointerDown={(e) => startHandleDrag('height', e)}
+            className="absolute z-10 h-1.5 w-5 -translate-x-1/2 cursor-ns-resize rounded-full bg-accent shadow-sm"
+            style={{
+              left: Math.max(24, Math.min(Math.max(24, size.width - 24), anchor.left + anchor.width / 2)),
+              top: Math.max(24, Math.min(Math.max(24, size.height - 72), anchor.top + anchor.height + 6)),
+            }}
+          />
         </>
       )}
 
@@ -569,7 +721,7 @@ export function Stage({
             panels,
             disabled,
             hasVariants,
-            jsx: `<${tagName} className="${store.previewClass}">${label}</${tagName}>`,
+            jsx: `<${displayTag} className="${store.previewClass}">${label}</${displayTag}>`,
             openPanel: (kind) => {
               setSelected(true);
               setPanel(kind);

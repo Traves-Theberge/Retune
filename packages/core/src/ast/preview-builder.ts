@@ -3,6 +3,8 @@ import * as t from '@babel/types';
 
 export interface PreviewNode {
   tag: string;
+  /** Original JSX component tag name in the active file (e.g. `TaskAnimation`, `Icon`) when expanded from a sub-component. */
+  sourceTag?: string;
   elementIndex: number;
   className: string;
   text?: string;
@@ -1495,6 +1497,9 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
     return expandJsxChildren(el.children, ctx);
   }
 
+  const callerIndex = ctx.scope.indexByOpening.get(el.openingElement) ?? -1;
+  const callerClass = buildPreviewClasses(el.openingElement, ctx);
+
   // Inline local components defined in the same file
   const localComp = ctx.scope.componentByName.get(tag);
   if (localComp && ctx.depth < ctx.maxDepth) {
@@ -1537,7 +1542,15 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
       jsxVars: nextVars,
       depth: ctx.depth + 1,
     });
-    if (inlineTree.length > 0) return inlineTree;
+    if (inlineTree.length > 0) {
+      if (callerClass) {
+        inlineTree[0] = {
+          ...inlineTree[0],
+          className: [inlineTree[0].className, callerClass].filter(Boolean).join(' '),
+        };
+      }
+      return inlineTree;
+    }
   }
 
   // Inline imported components across files when resolveImport is supplied
@@ -1607,7 +1620,7 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
           ...(Object.keys(passedJsxProps).length > 0 ? { _jsxProps: passedJsxProps } : {}),
         });
         if (importedTree) {
-          const foreign = markForeignSubtree(importedTree);
+          const foreign = markForeignSubtree(importedTree, tag, callerIndex, callerClass);
           ctx.nodeCount.value += countPreviewNodes([foreign]);
           return [foreign];
         }
@@ -1632,8 +1645,9 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
       return [
         {
           tag: 'svg',
-          elementIndex: -1,
-          className: buildPreviewClasses(el.openingElement, ctx),
+          sourceTag: tag,
+          elementIndex: callerIndex,
+          className: callerClass,
           attrs: {
             viewBox: '0 0 24 24',
             width: 18,
@@ -1644,7 +1658,7 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
             strokeLinecap: 'round',
             strokeLinejoin: 'round',
           },
-          children: [{ tag: 'path', elementIndex: -1, className: '', attrs: { d }, children: [] }],
+          children: [{ tag: 'path', sourceTag: tag, elementIndex: callerIndex, className: '', attrs: { d }, children: [] }],
         },
       ];
     }
@@ -1654,8 +1668,9 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
       return [
         {
           tag: 'span',
-          elementIndex: -1,
-          className: 'account-avatar shared-avatar',
+          sourceTag: tag,
+          elementIndex: callerIndex,
+          className: ['account-avatar shared-avatar', callerClass].filter(Boolean).join(' '),
           text: 'B',
           children: [],
         },
@@ -1668,8 +1683,9 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
       return [
         {
           tag: 'div',
-          elementIndex: ctx.scope.indexByOpening.get(el.openingElement) ?? -1,
-          className: buildPreviewClasses(el.openingElement, ctx),
+          sourceTag: tag,
+          elementIndex: callerIndex,
+          className: callerClass,
           attrs: { 'data-component': tag },
           ...(passed.text ? { text: passed.text } : {}),
           children: passed.children,
@@ -1690,8 +1706,9 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
     return [
       {
         tag: 'div',
-        elementIndex: ctx.scope.indexByOpening.get(el.openingElement) ?? -1,
-        className: buildPreviewClasses(el.openingElement, ctx) || 'retune-component-stub',
+        sourceTag: tag,
+        elementIndex: callerIndex,
+        className: callerClass || 'retune-component-stub',
         attrs: { 'data-component': tag },
         text: labelHint,
         children: [],
@@ -1700,8 +1717,8 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
   }
 
   ctx.nodeCount.value += 1;
-  const elementIndex = ctx.scope.indexByOpening.get(el.openingElement) ?? 0;
-  const className = buildPreviewClasses(el.openingElement, ctx);
+  const elementIndex = callerIndex >= 0 ? callerIndex : 0;
+  const className = callerClass;
   const { attrs, style } = extractAttrs(el.openingElement, ctx);
   const { text, children } = expandJsxChildrenWithText(el.children, ctx);
 
@@ -1718,12 +1735,24 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
   ];
 }
 
-function markForeignSubtree(node: PreviewNode): PreviewNode {
-  return {
-    ...node,
-    elementIndex: -1,
-    children: node.children.map(markForeignSubtree),
+function markForeignSubtree(
+  node: PreviewNode,
+  callerTag?: string,
+  callerIndex = -1,
+  callerClass = ''
+): PreviewNode {
+  const visit = (cur: PreviewNode, isRoot: boolean): PreviewNode => {
+    if (cur.tag === '#text') return cur;
+    const mergedClass = isRoot && callerClass ? [cur.className, callerClass].filter(Boolean).join(' ') : cur.className;
+    return {
+      ...cur,
+      ...(callerTag ? { sourceTag: callerTag } : {}),
+      elementIndex: callerIndex,
+      className: mergedClass,
+      children: cur.children.map((c) => visit(c, false)),
+    };
   };
+  return visit(node, true);
 }
 
 function expandJsxChildren(rawChildren: t.JSXElement['children'], ctx: BuildContext): PreviewNode[] {

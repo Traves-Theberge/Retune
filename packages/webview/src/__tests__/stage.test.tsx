@@ -192,5 +192,64 @@ describe('stage pieces', () => {
     expect(out).toContain('container-type:inline-size');
     expect(out).toContain('max-w-6xl');
     expect(out).toMatch(/<span class="dot"><\/span>All<span class="count">4<\/span>/);
+    expect(out).toContain('data-testid="dimension-badge"');
+    expect(out).toContain('aria-label="Resize width"');
+    expect(out).toContain('aria-label="Resize height"');
+  });
+
+  it('targets sub-components via sourceTag and preserves dynamic classes when editing', () => {
+    const out = html(
+      <Stage
+        store={store({
+          stage: {
+            ...DEFAULT_STAGE_STATE,
+            targetElement: 'TaskAnimation',
+            targetIndex: 0,
+            baselineClass: 'anim-base',
+            harmonicsClass: 'anim-base w-[96px]',
+          },
+          previewClass: 'anim-base w-[96px]',
+          baselinePreviewClass: 'anim-base',
+          meta: {
+            ...DEMO_META,
+            componentName: 'TasksPage',
+            cva: { hasCva: false, variants: {}, defaultVariants: {}, baseClasses: '' },
+            previewTree: {
+              tag: 'div',
+              elementIndex: 0,
+              className: 'tasks-page',
+              children: [
+                {
+                  tag: 'div',
+                  sourceTag: 'TaskAnimation',
+                  elementIndex: 0,
+                  className: 'anim-base is-playing',
+                  children: [
+                    {
+                      tag: 'svg',
+                      sourceTag: 'TaskAnimation',
+                      elementIndex: 0,
+                      className: 'svg-art',
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        })}
+        tone="light"
+        comparing={false}
+        onToggleTone={noop}
+      />
+    );
+    expect(out).toContain('data-retune-target="true"');
+    expect(out).toContain('data-retune-subcomp="TaskAnimation:0"');
+    expect(out).toContain('is-playing');
+    expect(out).toContain('w-[96px]');
+    expect(out).toContain('&lt;TaskAnimation&gt;');
+    // Only outer root of TaskAnimation gets data-retune-target, not inner <svg>
+    expect(out.match(/data-retune-target="true"/g)?.length).toBe(1);
+    expect(out.match(/data-retune-subcomp="TaskAnimation:0"/g)?.length).toBe(1);
   });
 });

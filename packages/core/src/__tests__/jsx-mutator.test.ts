@@ -207,7 +207,7 @@ describe('extractPreviewTree', () => {
       import { Card } from './Card';
       const item = { name: 'Stretch', enabled: true };
       export function Page() {
-        return <Card title={item.name} active={item.enabled}><span className="badge">Ready</span></Card>;
+        return <Card className="outer-card" title={item.name} active={item.enabled}><span className="badge">Ready</span></Card>;
       }
     `;
     const card = `
@@ -215,6 +215,7 @@ describe('extractPreviewTree', () => {
         return (
           <article className={active ? 'card on' : 'card off'}>
             <h3>{title}</h3>
+            <Icon name="plus" className="icon-add" />
             {children}
           </article>
         );
@@ -224,9 +225,20 @@ describe('extractPreviewTree', () => {
       resolveImport: (spec) => (spec === './Card' ? card : null),
     });
     expect(tree?.tag).toBe('article');
-    expect(tree?.className).toBe('card on');
+    expect(tree?.sourceTag).toBe('Card');
+    expect(tree?.elementIndex).toBe(0);
+    expect(tree?.className).toBe('card on outer-card');
+    expect(tree?.children[0]?.sourceTag).toBe('Card');
+    expect(tree?.children[0]?.elementIndex).toBe(0);
     expect(tree?.children[0]?.text).toBe('Stretch');
-    expect(tree?.children[1]?.text).toBe('Ready');
+    expect(tree?.children[1]?.tag).toBe('svg');
+    expect(tree?.children[2]?.text).toBe('Ready');
+
+    const iconTree = extractPreviewTree(`export function Btn() { return <button><Icon name="plus" className="ic" /></button>; }`);
+    expect(iconTree?.children[0]?.tag).toBe('svg');
+    expect(iconTree?.children[0]?.sourceTag).toBe('Icon');
+    expect(iconTree?.children[0]?.elementIndex).toBe(0);
+    expect(iconTree?.children[0]?.className).toBe('ic');
   });
 
   it('evaluates block-body declarations, string/array methods, and fallback coalescing in functions and map callbacks', () => {

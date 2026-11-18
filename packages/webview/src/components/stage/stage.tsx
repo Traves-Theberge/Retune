@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ComputedElementStyle, CvaMetadata, PreviewNode, PseudoStateMode } from '@retune/core';
+import type { ComputedElementStyle, CvaMetadata, MatchedCssRule, PreviewNode, PseudoStateMode } from '@retune/core';
 import type { StageStore } from '../../state/use-stage';
 import { contrastGrade, contrastRatio, cssColorToHex, isSmallTouchTarget } from '../../lib/a11y';
 import { parseArbitraryStyle, resolveSimulatedClasses, setArbitrary } from '../../lib/arbitrary-style';
@@ -70,6 +70,107 @@ function extractComputedStyle(cs: CSSStyleDeclaration, measuredCss: Size): Compu
     shadow: cs.boxShadow && cs.boxShadow !== 'none' ? 'md' : 'none',
     opacity: !Number.isNaN(opacityNum) ? String(Math.round(opacityNum * 100) / 100) : undefined,
   };
+}
+
+function findBraceClose(css: string, openIdx: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = openIdx; i < css.length; i++) {
+    const ch = css[i];
+    if (quote) {
+      if (ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return css.length - 1;
+}
+
+function splitTopLevelSelectors(raw: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '(') parenDepth++;
+    else if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+    else if (ch === '[') bracketDepth++;
+    else if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+    else if (ch === ',' && parenDepth === 0 && bracketDepth === 0) {
+      if (cur.trim()) out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+function extractMatchedCssRules(workspaceCss: string | undefined, targetDom: HTMLElement): MatchedCssRule[] {
+  if (!workspaceCss || typeof targetDom.matches !== 'function') return [];
+  const rules: MatchedCssRule[] = [];
+  const seen = new Set<string>();
+
+  const scan = (input: string) => {
+    let i = 0;
+    while (i < input.length && rules.length < 8) {
+      const nextBrace = input.indexOf('{', i);
+      const nextSemi = input.indexOf(';', i);
+      if (nextBrace === -1) break;
+      if (nextSemi !== -1 && nextSemi < nextBrace) {
+        i = nextSemi + 1;
+        continue;
+      }
+      const header = input.slice(i, nextBrace).trim();
+      const closeIdx = findBraceClose(input, nextBrace);
+      const body = input.slice(nextBrace + 1, closeIdx);
+      i = closeIdx + 1;
+      if (!header) continue;
+      if (/^@(?:media|supports|layer|container)\b/i.test(header)) {
+        scan(body);
+        continue;
+      }
+      if (header.startsWith('@')) continue;
+
+      const declarations = body.trim().replace(/\s+/g, ' ');
+      if (!declarations || (header === '.retune-preview-scope' && declarations === 'box-sizing: border-box;')) {
+        continue;
+      }
+      const matchedParts: string[] = [];
+      for (const part of splitTopLevelSelectors(header)) {
+        if (part === '.retune-preview-scope') continue;
+        try {
+          if (targetDom.matches(part)) {
+            const clean = part.replace(/^\.retune-preview-scope(?:\s*>\s*|\s+)?/, '').trim() || part;
+            if (clean && !matchedParts.includes(clean)) matchedParts.push(clean);
+          }
+        } catch {
+          // Ignore unsupported pseudo-element/selector syntax in DOM matching
+        }
+      }
+      if (matchedParts.length === 0) continue;
+      const selector = matchedParts.join(', ');
+      const clippedDecl = declarations.length > 220 ? `${declarations.slice(0, 217)}...` : declarations;
+      const dedupeKey = `${selector}::${clippedDecl}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      rules.push({ selector, declarations: clippedDecl });
+    }
+  };
+
+  scan(workspaceCss);
+  return rules;
 }
 
 function countTreeNodes(node: PreviewNode | null | undefined): number {
@@ -238,10 +339,11 @@ export function Stage({
         const ratio = contrastRatio(cs.color, cs.backgroundColor, backdrop);
         setContrast((prev) => (prev === ratio ? prev : ratio));
         const nextComputed = extractComputedStyle(cs, measuredCss);
-        const sig = JSON.stringify(nextComputed);
+        const nextRules = extractMatchedCssRules(meta?.workspaceCss, targetDom);
+        const sig = JSON.stringify({ computed: nextComputed, rules: nextRules });
         if (sig !== lastComputedRef.current) {
           lastComputedRef.current = sig;
-          store.patchStage({ computedStyle: nextComputed });
+          store.patchStage({ computedStyle: nextComputed, matchedCssRules: nextRules });
         }
       }
     }
@@ -735,7 +837,7 @@ export function Stage({
           tone === 'light' ? 'text-frame-dark/50' : 'text-subtle'
         }`}
       >
-        Approximate preview — classes only
+        {meta?.workspaceCss ? '1:1 preview — associated CSS & classes synced' : '1:1 preview — classes & styles synced'}
       </p>
 
       {selected && anchor && !matrixMode && (

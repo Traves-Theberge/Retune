@@ -115,5 +115,27 @@ export function Badge({ label }: BadgeProps) { return <div className="p-1"><span
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('inlines relative @import rules, CSS Modules, and cross-directory imports into workspaceCss', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'retune-css-imports-'));
+    try {
+      fs.mkdirSync(path.join(tmpDir, 'shared'));
+      fs.mkdirSync(path.join(tmpDir, 'components'));
+      fs.writeFileSync(path.join(tmpDir, 'shared', 'tokens.css'), '.token-box { --bw: 1; padding: 12px; }');
+      fs.writeFileSync(path.join(tmpDir, 'styles.css'), '@import "./shared/tokens.css";\n.page-wrap { margin: 0 auto; }');
+      fs.writeFileSync(path.join(tmpDir, 'components', 'Card.module.css'), '.cardShell { border-radius: 14px; }');
+      const compPath = path.join(tmpDir, 'components', 'Card.tsx');
+      const compSrc = `import styles from './Card.module.css';\nexport function Card() { return <section className={styles.cardShell}>Hi</section>; }`;
+      fs.writeFileSync(compPath, compSrc);
+
+      const meta = inspectComponentFile(compSrc, compPath, 'Card');
+      expect(meta.workspaceCss).toContain('.retune-preview-scope .token-box');
+      expect(meta.workspaceCss).toContain('.retune-preview-scope .page-wrap');
+      expect(meta.workspaceCss).toContain('.retune-preview-scope .cardShell');
+      expect(meta.previewTree?.className).toBe('cardShell');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 

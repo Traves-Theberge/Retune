@@ -58,7 +58,9 @@ describe('stage pieces', () => {
   });
   it('renders the preview with current or baseline classes and the caption', () => {
     const live = html(<Stage store={store()} tone="dark" comparing={false} onToggleTone={noop} />);
-    expect(live).toContain('px-4 current'); expect(live).toContain('Approximate preview — classes only');
+    expect(live).toContain('px-4 current'); expect(live).toContain('1:1 preview — classes &amp; styles synced');
+    const withCss = html(<Stage store={store({ meta: { ...DEMO_META, workspaceCss: '.retune-preview-scope .btn { color: red; }' } })} tone="dark" comparing={false} onToggleTone={noop} />);
+    expect(withCss).toContain('1:1 preview — associated CSS &amp; classes synced');
     expect(live).not.toMatch(/>Sync/);
     expect(live).toMatch(/role="radiogroup" aria-label="Viewport"/);
     expect(live).toMatch(/aria-checked="true"[^>]*title="Fluid width"/);

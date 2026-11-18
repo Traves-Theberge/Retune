@@ -32,6 +32,7 @@ export function SidebarView({ store, embedded }: { store: StageStore; embedded?:
   const classes = stage.harmonicsClass;
   const activeState: PseudoStateMode = stage.pseudoState ?? 'none';
   const tokens = splitClasses(classes);
+  const matchedRules = stage.matchedCssRules ?? [];
   const ed = createClassEditor(classes, store.setClasses, activeState, stage.computedStyle);
   const props = meta?.props?.filter((p) => p.name !== 'label') ?? [];
   const fileName = meta?.filePath ? meta.filePath.split(/[\\/]/).pop() : '';
@@ -174,12 +175,31 @@ export function SidebarView({ store, embedded }: { store: StageStore; embedded?:
               <Row label="opacity">{ed.opacity}</Row>
             </Section>
 
-            <Section title="Classes" count={tokens.length}>
+            <Section title="Classes" count={tokens.length + matchedRules.length}>
               <ClassChips
                 classes={classes}
                 onChange={store.setClasses}
                 placeholder="Add classes · Enter  (e.g. hover:bg-accent-hover w-[220px])"
               />
+              {matchedRules.length > 0 && (
+                <div className="space-y-1.5 border-t border-line pt-2">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-subtle">
+                    <span>Associated CSS</span>
+                    <span className="font-mono">{matchedRules.length}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {matchedRules.map((rule, idx) => (
+                      <div
+                        key={`${rule.selector}-${idx}`}
+                        className="rounded-md border border-line bg-field px-2 py-1 font-mono text-[11px] leading-snug"
+                      >
+                        <div className="truncate font-semibold text-accent">{rule.selector}</div>
+                        <div className="break-words text-muted">{rule.declarations}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <Button variant="ghost" disabled={!dirty} onClick={store.discard}>
                   Discard changes

@@ -90,6 +90,27 @@ function scopeSelectorList(selectorsRaw: string, scopeClass: string): string {
     .join(', ');
 }
 
+function inlineCssImports(rawCss: string, baseDir: string, seen: Set<string>, depth = 0): string {
+  if (depth >= 3) return rawCss;
+  return rawCss.replace(
+    /@import\s+(?:url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3)([^;]*);/gi,
+    (full, _q1, u1, _q2, u2) => {
+      const spec = (u1 || u2 || '').trim();
+      if (!spec.startsWith('.')) return full;
+      const abs = path.resolve(baseDir, spec);
+      if (seen.has(abs)) return '';
+      try {
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return '';
+        seen.add(abs);
+        const imported = fs.readFileSync(abs, 'utf8');
+        return inlineCssImports(imported, path.dirname(abs), seen, depth + 1);
+      } catch {
+        return '';
+      }
+    }
+  );
+}
+
 function findMatchingBrace(css: string, openIdx: number): number {
   let depth = 0;
   for (let i = openIdx; i < css.length; i++) {
@@ -199,16 +220,16 @@ export function collectWorkspaceCss(entryFile: string, sourceText: string): stri
     }
   };
 
-  // Discover shared app stylesheet and entry-point CSS imports across up to 3 ancestor levels
+  // Discover shared app stylesheet and entry-point CSS imports across up to 4 ancestor levels
   let walkDir = dir;
   const baseCandidates: string[] = [];
   const entryCandidates: string[] = [];
-  for (let level = 0; level < 3; level++) {
+  for (let level = 0; level < 4; level++) {
     for (const file of CSS_DEFAULTS) {
       const cand = path.join(walkDir, file);
       if (fs.existsSync(cand)) baseCandidates.unshift(cand);
     }
-    for (const entryName of ['main.tsx', 'main.jsx', 'App.tsx', 'App.jsx', 'index.tsx']) {
+    for (const entryName of ['main.tsx', 'main.jsx', 'App.tsx', 'App.jsx', 'index.tsx', 'layout.tsx', 'layout.jsx']) {
       const entryCand = path.join(walkDir, entryName);
       if (fs.existsSync(entryCand)) entryCandidates.unshift(entryCand);
     }
@@ -225,11 +246,19 @@ export function collectWorkspaceCss(entryFile: string, sourceText: string): stri
     }
   }
 
-  // Sibling stylesheets in the component's own folder (excluding CSS Modules)
+  // Sibling stylesheets (including CSS Modules) and sibling component CSS imports in the component's own folder
   try {
-    const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.css') && !f.endsWith('.module.css')).sort();
-    for (const f of entries) {
-      addCss(path.join(dir, f));
+    const dirEntries = fs.readdirSync(dir).sort();
+    for (const f of dirEntries) {
+      if (f.endsWith('.css')) {
+        addCss(path.join(dir, f));
+      } else if (/\.(tsx|jsx)$/i.test(f)) {
+        try {
+          collectImportsFromSource(dir, fs.readFileSync(path.join(dir, f), 'utf8'));
+        } catch {
+          // Ignore unreadable sibling component file
+        }
+      }
     }
   } catch {
     // Ignore unreadable directory
@@ -242,7 +271,9 @@ export function collectWorkspaceCss(entryFile: string, sourceText: string): stri
   let combined = '';
   for (const file of cssFiles) {
     try {
-      const scoped = scopePreviewCss(fs.readFileSync(file, 'utf8'));
+      const rawCss = fs.readFileSync(file, 'utf8');
+      const inlined = inlineCssImports(rawCss, path.dirname(file), new Set([path.resolve(file)]));
+      const scoped = scopePreviewCss(inlined);
       if (combined.length + scoped.length <= MAX_CSS_CHARS) {
         combined += scoped + '\n';
       }

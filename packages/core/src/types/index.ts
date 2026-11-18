@@ -66,6 +66,11 @@ export interface ComputedElementStyle {
   opacity?: string;
 }
 
+export interface MatchedCssRule {
+  selector: string;
+  declarations: string;
+}
+
 export interface StageState {
   targetElement?: string;
   selectedVariants: Record<string, string>;
@@ -74,6 +79,7 @@ export interface StageState {
   baselineClass: string;
   baselineText?: string;
   computedStyle?: ComputedElementStyle | null;
+  matchedCssRules?: MatchedCssRule[];
   targetIndex?: number;
   cvaTarget?: { group: string; key: string } | null;
   pseudoState?: PseudoStateMode;

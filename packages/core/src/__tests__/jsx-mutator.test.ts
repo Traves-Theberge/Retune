@@ -452,4 +452,25 @@ describe('jsx-mutator: text extraction and non-lossy text edits', () => {
     const edit = computeTextEdit(bareInput, { name: 'input' }, 'Type here');
     expect(applyEdits(bareInput, edit)).toBe(`<input placeholder="Type here" type="text" />`);
   });
+
+  it('evaluates CSS Module classes and dynamic template/conditional classes in extractPreviewTree', () => {
+    const src = `
+      import { useState } from 'react';
+      import styles from './Card.module.css';
+      export function FilterPanel() {
+        const [tab] = useState('all');
+        const [state] = useState<'ready' | 'connected'>('ready');
+        return (
+          <div className={styles.panelCard}>
+            <button className={\`filter-chip \${tab === 'all' ? 'selected' : ''}\`}>All</button>
+            <article className={\`connector-card connector-card-\${state}\`}>Calendar</article>
+          </div>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(src);
+    expect(tree?.className).toBe('panelCard');
+    expect(tree?.children[0]?.className).toBe('filter-chip selected');
+    expect(tree?.children[1]?.className).toBe('connector-card connector-card-ready');
+  });
 });

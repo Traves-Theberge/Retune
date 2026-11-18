@@ -87,4 +87,24 @@ describe('SidebarView', () => {
     expect(out).toContain('value="#203b30"');
     expect(out).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>500</);
   });
+
+  it('displays matched Associated CSS rules inside the Classes section', () => {
+    const out = html(
+      <SidebarView
+        store={store({
+          stage: {
+            ...DEFAULT_STAGE_STATE,
+            matchedCssRules: [
+              { selector: '.tasks-page h1', declarations: 'font-size: 40px; letter-spacing: -1.7px;' },
+              { selector: '.primary', declarations: 'background: var(--accent); border-radius: 999px;' },
+            ],
+          },
+        })}
+      />
+    );
+    expect(out).toContain('Associated CSS');
+    expect(out).toContain('.tasks-page h1');
+    expect(out).toContain('font-size: 40px; letter-spacing: -1.7px;');
+    expect(out).toContain('.primary');
+  });
 });

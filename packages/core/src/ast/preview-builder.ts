@@ -259,6 +259,7 @@ interface FileScope {
   helperFns: Map<string, HelperFnEntry>;
   importMap: Map<string, { specifier: string; importedName: string }>;
   assetImportMap: Map<string, string>;
+  cssModuleImports: Set<string>;
   reexports: Array<{ specifier: string; importedName: string; exportedName: string }>;
 }
 
@@ -432,11 +433,20 @@ function buildFileScope(program: t.Program): FileScope {
   const helperFns = new Map<string, HelperFnEntry>();
   const importMap = new Map<string, { specifier: string; importedName: string }>();
   const assetImportMap = new Map<string, string>();
+  const cssModuleImports = new Set<string>();
   const reexports: Array<{ specifier: string; importedName: string; exportedName: string }> = [];
 
   for (const stmt of program.body) {
     if (t.isImportDeclaration(stmt)) {
       const specifier = stmt.source.value;
+      if (/\.module\.css$/i.test(specifier)) {
+        for (const sp of stmt.specifiers) {
+          if (t.isImportDefaultSpecifier(sp) || t.isImportNamespaceSpecifier(sp)) {
+            cssModuleImports.add(sp.local.name);
+          }
+        }
+        continue;
+      }
       if (!specifier.startsWith('.')) continue;
       if (/\.(svg|png|jpe?g|webp|gif)$/i.test(specifier)) {
         for (const sp of stmt.specifiers) {
@@ -589,6 +599,7 @@ function buildFileScope(program: t.Program): FileScope {
     helperFns,
     importMap,
     assetImportMap,
+    cssModuleImports,
     reexports,
   };
 }
@@ -712,19 +723,29 @@ function evalCallbackReturn(
   if (t.isArrowFunctionExpression(cb) && !t.isBlockStatement(cb.body)) {
     retExpr = cb.body;
   } else if (t.isBlockStatement(cb.body)) {
-    for (const stmt of cb.body.body) {
-      if (t.isVariableDeclaration(stmt)) {
-        for (const decl of stmt.declarations) {
-          if (!decl.init) continue;
-          const v = evalValue(decl.init, cbEnv, scope, depth + 1);
-          if (v !== UNKNOWN) bindPattern(decl.id, v, cbEnv, dummyJsx, scope);
-          else if (t.isIdentifier(decl.id)) cbEnv[decl.id.name] = UNKNOWN;
+    const evalStatements = (stmts: t.Statement[]): EvalResult => {
+      for (const stmt of stmts) {
+        if (t.isVariableDeclaration(stmt)) {
+          for (const decl of stmt.declarations) {
+            if (!decl.init) continue;
+            const v = evalValue(decl.init, cbEnv, scope, depth + 1);
+            if (v !== UNKNOWN) bindPattern(decl.id, v, cbEnv, dummyJsx, scope);
+            else if (t.isIdentifier(decl.id)) cbEnv[decl.id.name] = UNKNOWN;
+          }
+        } else if (t.isReturnStatement(stmt)) {
+          return stmt.argument ? evalValue(stmt.argument, cbEnv, scope, depth + 1) : undefined;
+        } else if (t.isTryStatement(stmt)) {
+          const tried = evalStatements(stmt.block.body);
+          if (tried !== UNKNOWN) return tried;
+          if (stmt.handler) {
+            const caught = evalStatements(stmt.handler.body.body);
+            if (caught !== UNKNOWN) return caught;
+          }
         }
-      } else if (t.isReturnStatement(stmt)) {
-        retExpr = stmt.argument ?? null;
-        break;
       }
-    }
+      return UNKNOWN;
+    };
+    return evalStatements(cb.body.body);
   }
   return retExpr ? evalValue(retExpr, cbEnv, scope, depth + 1) : UNKNOWN;
 }
@@ -954,6 +975,14 @@ function evalValue(node: t.Node | null | undefined, env: Record<string, unknown>
     return out;
   }
   if (t.isMemberExpression(u) || t.isOptionalMemberExpression(u)) {
+    if (t.isIdentifier(u.object) && scope.cssModuleImports.has(u.object.name)) {
+      const modKey = u.computed
+        ? evalValue(u.property, env, scope, depth + 1)
+        : t.isIdentifier(u.property)
+          ? u.property.name
+          : UNKNOWN;
+      return typeof modKey === 'string' ? modKey : UNKNOWN;
+    }
     const objVal = evalValue(u.object, env, scope, depth + 1);
     if (objVal === UNKNOWN) return UNKNOWN;
     if (objVal === null || objVal === undefined) {
@@ -1071,7 +1100,7 @@ function shouldSkipUnknownGuard(node: t.Node): boolean {
   }
   if (t.isUnaryExpression(u) && u.operator === '!') {
     const arg = unwrapExpr(u.argument);
-    if (t.isIdentifier(arg) && /^(client|supported|authenticated|owned|ready|hasTasks|hasItems|hasEntries|remindersEnabled)$/i.test(arg.name)) {
+    if (t.isIdentifier(arg) && /^(client|cloud|local|supported|authenticated|owned|ready|hasTasks|hasItems|hasEntries|remindersEnabled)$/i.test(arg.name)) {
       return true;
     }
     if ((t.isMemberExpression(arg) || t.isOptionalMemberExpression(arg)) && t.isIdentifier(arg.property, { name: 'length' })) {
@@ -1350,41 +1379,93 @@ function extractAttrs(
   return { attrs, style };
 }
 
+const CLASS_TEMPLATE_FALLBACKS: Record<string, string> = {
+  state: 'ready',
+  status: 'observed',
+  variant: 'primary',
+  tone: 'neutral',
+  size: 'md',
+};
+
 function buildPreviewClasses(el: t.JSXOpeningElement, ctx: BuildContext): string {
-  const base = ctx.extractStaticClass(el);
-  if (base) return base;
   const clsAttr = el.attributes.find(
-    (a): a is t.JSXAttribute => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && a.name.name === 'className'
+    (a): a is t.JSXAttribute =>
+      t.isJSXAttribute(a) && t.isJSXIdentifier(a.name) && (a.name.name === 'className' || a.name.name === 'class')
   );
-  if (!clsAttr?.value || !t.isJSXExpressionContainer(clsAttr.value)) return '';
+  if (!clsAttr?.value) return '';
+  if (!t.isJSXExpressionContainer(clsAttr.value)) {
+    return ctx.extractStaticClass(el);
+  }
   const expr = unwrapExpr(clsAttr.value.expression);
-  if (!expr) return '';
+  if (!expr) return ctx.extractStaticClass(el);
 
   const evalClassPart = (n: t.Node): string => {
     const val = evalValue(n, ctx.env, ctx.scope);
     if (typeof val === 'string') return val;
     const u = unwrapExpr(n);
+    if (!u) return '';
     if (t.isConditionalExpression(u)) {
+      const cond = evalCondition(u.test, ctx.env, ctx.scope);
+      if (cond === true) return evalClassPart(u.consequent);
+      if (cond === false || shouldSkipUnknownGuard(u.test)) return evalClassPart(u.alternate);
       return evalClassPart(u.consequent) || evalClassPart(u.alternate);
     }
     if (t.isLogicalExpression(u) && u.operator === '&&') {
+      const cond = evalCondition(u.left, ctx.env, ctx.scope);
+      if (cond === false || (cond === 'unknown' && shouldSkipUnknownGuard(u.left))) return '';
       return evalClassPart(u.right);
+    }
+    if (t.isLogicalExpression(u) && (u.operator === '||' || u.operator === '??')) {
+      return evalClassPart(u.left) || evalClassPart(u.right);
     }
     if (t.isTemplateLiteral(u)) {
       let acc = '';
       for (let i = 0; i < u.quasis.length; i++) {
         acc += u.quasis[i].value.cooked ?? '';
-        if (i < u.expressions.length) acc += evalClassPart(u.expressions[i]);
+        if (i < u.expressions.length) {
+          let part = evalClassPart(u.expressions[i]);
+          if (!part && /-$/.test(acc)) {
+            const rawExpr = unwrapExpr(u.expressions[i]);
+            const keyName = t.isIdentifier(rawExpr)
+              ? rawExpr.name
+              : (t.isMemberExpression(rawExpr) || t.isOptionalMemberExpression(rawExpr)) && t.isIdentifier(rawExpr.property)
+                ? rawExpr.property.name
+                : '';
+            if (keyName && CLASS_TEMPLATE_FALLBACKS[keyName]) {
+              part = CLASS_TEMPLATE_FALLBACKS[keyName];
+            } else {
+              acc = acc.replace(/[^\s]+-$/, '');
+            }
+          }
+          acc += part;
+        }
       }
       return acc;
     }
-    if (t.isCallExpression(u) && t.isIdentifier(u.callee) && CLASS_HELPERS.has(u.callee.name)) {
-      return u.arguments.map((a) => evalClassPart(a)).filter(Boolean).join(' ');
+    if (t.isArrayExpression(u)) {
+      return u.elements.map((e) => (e && !t.isSpreadElement(e) ? evalClassPart(e) : '')).filter(Boolean).join(' ');
+    }
+    if (t.isCallExpression(u)) {
+      if (t.isIdentifier(u.callee) && CLASS_HELPERS.has(u.callee.name)) {
+        return u.arguments.map((a) => evalClassPart(a)).filter(Boolean).join(' ');
+      }
+      if (t.isMemberExpression(u.callee) && t.isIdentifier(u.callee.property, { name: 'join' })) {
+        const arrExpr = u.callee.object;
+        if (
+          t.isCallExpression(arrExpr) &&
+          t.isMemberExpression(arrExpr.callee) &&
+          t.isIdentifier(arrExpr.callee.property, { name: 'filter' })
+        ) {
+          return evalClassPart(arrExpr.callee.object);
+        }
+        return evalClassPart(arrExpr);
+      }
     }
     return '';
   };
 
-  return evalClassPart(expr).replace(/\s+/g, ' ').trim();
+  const evaluated = evalClassPart(expr).replace(/\s+/g, ' ').trim();
+  return evaluated || ctx.extractStaticClass(el);
 }
 
 function bindPattern(
@@ -1555,15 +1636,15 @@ function getArrayItems(
     const arr = ctx.scope.arrayMap.get(u.name);
     if (arr) return getArrayItems(arr, ctx);
     const val = evalValue(u, ctx.env, ctx.scope);
-    if (Array.isArray(val)) return { isDynamic: false, items: val.slice(0, u.name === 'days' ? 14 : 7) };
     if (EMPTY_DYNAMIC_LIST_RE.test(u.name)) return { isDynamic: false, items: [] };
+    if (Array.isArray(val) && val.length > 0) return { isDynamic: false, items: val.slice(0, u.name === 'days' ? 14 : 7) };
     if (u.name === 'days') return { isDynamic: false, items: SAMPLE_CALENDAR_DAYS, limit: SAMPLE_CALENDAR_DAYS.length };
     return { isDynamic: true, items: SAMPLE_ITEMS };
   }
 
   if (t.isLogicalExpression(u) && (u.operator === '??' || u.operator === '||')) {
     const evaluated = evalValue(u, ctx.env, ctx.scope);
-    if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 7) };
+    if (Array.isArray(evaluated) && evaluated.length > 0) return { isDynamic: false, items: evaluated.slice(0, 7) };
     return getArrayItems(u.left, ctx);
   }
 
@@ -1597,13 +1678,13 @@ function getArrayItems(
     }
     if (m === 'filter' || m === 'sort' || m === 'slice') {
       const evaluated = evalValue(u, ctx.env, ctx.scope);
-      if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 7) };
+      if (Array.isArray(evaluated) && evaluated.length > 0) return { isDynamic: false, items: evaluated.slice(0, 7) };
       return getArrayItems(u.callee.object, ctx);
     }
   }
 
   const evaluated = evalValue(u, ctx.env, ctx.scope);
-  if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 7) };
+  if (Array.isArray(evaluated) && evaluated.length > 0) return { isDynamic: false, items: evaluated.slice(0, 7) };
 
   const tailName = (t.isMemberExpression(u) || t.isOptionalMemberExpression(u)) && t.isIdentifier(u.property)
     ? u.property.name

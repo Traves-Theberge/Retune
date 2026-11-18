@@ -127,7 +127,8 @@ function buildWorkspaceIndex() {
   for (const [normDir, sampleFile] of sortedDirs) {
     if (totalBytes >= MAX_INDEX_BYTES) break;
     try {
-      const scoped = collectWorkspaceCss(sampleFile, '');
+      const sampleSource = fs.readFileSync(sampleFile, 'utf8');
+      const scoped = collectWorkspaceCss(sampleFile, sampleSource);
       if (!scoped) continue;
       // Check if an ancestor within 3 levels already holds the identical scoped CSS
       const parts = normDir.split('/');

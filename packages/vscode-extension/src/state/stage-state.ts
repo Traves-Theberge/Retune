@@ -95,6 +95,7 @@ export function reconcile(
 
   if (targetChanged) {
     next.computedStyle = null;
+    next.matchedCssRules = undefined;
   }
 
   if (fileText !== undefined) {

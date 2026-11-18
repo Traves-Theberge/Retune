@@ -118,4 +118,66 @@ export function FeatureCard() {
     unsub();
     unsubPanel();
   });
+
+  it('preserves workspaceCss match when component source changes in Orca and matches unknown files by class signature', async () => {
+    const filePath = '/repo/apps/demo/src/Card.tsx';
+    const cssText = '.retune-preview-scope .hero-card { background: #e8f2db; border-radius: 24px; }';
+    const initialCard = `export function Card() { return <section className="hero-card">Hello</section>; }`;
+    const g = globalThis as unknown as { window?: { RETUNE_WORKSPACE_INDEX?: unknown } };
+    const hadWindow = g.window !== undefined;
+    if (!hadWindow) g.window = {} as { RETUNE_WORKSPACE_INDEX?: unknown };
+    g.window!.RETUNE_WORKSPACE_INDEX = {
+      files: { [filePath]: initialCard },
+      cssByDir: { '/repo/apps/demo/src': cssText },
+    };
+
+    try {
+      let docText = initialCard;
+      const storage = createMockStorage();
+      const orcaEditor: OrcaFrameApi = {
+        document: {
+          get: async () => ({ version: 1, readOnly: false, content: docText }),
+          onDidChange: () => ({ dispose: () => {} }),
+          applyEdit: async () => null,
+        },
+        storage,
+      };
+      const host = createOrcaHost(orcaEditor);
+      const messages: HostMessage[] = [];
+      const unsub = host.subscribe((m) => messages.push(m));
+      await new Promise((r) => setTimeout(r, 20));
+      const firstComp = messages.filter((m) => m.type === 'SYNC_COMPONENT').pop() as any;
+      expect(firstComp?.payload?.workspaceCss).toBe(cssText);
+
+      // Simulate mutating classes/text in Orca
+      host.post({ type: 'MUTATE_CLASSES', payload: { className: 'hero-card p-6', text: 'Updated' } });
+      await new Promise((r) => setTimeout(r, 20));
+      const updatedComp = messages.filter((m) => m.type === 'SYNC_COMPONENT').pop() as any;
+      expect(updatedComp?.payload?.workspaceCss).toBe(cssText);
+      unsub();
+
+      // Also test matching an edited unnamed/unmatched source buffer by class signature
+      const modifiedUnsaved = `const View = () => <div className="hero-card">Unsaved</div>;`;
+      const host2 = createOrcaHost({
+        document: {
+          get: async () => ({ version: 1, readOnly: false, content: modifiedUnsaved }),
+          onDidChange: () => ({ dispose: () => {} }),
+          applyEdit: async () => null,
+        },
+        storage,
+      });
+      const msgs2: HostMessage[] = [];
+      const unsub2 = host2.subscribe((m) => msgs2.push(m));
+      await new Promise((r) => setTimeout(r, 20));
+      const matchedComp = msgs2.filter((m) => m.type === 'SYNC_COMPONENT').pop() as any;
+      expect(matchedComp?.payload?.workspaceCss).toBe(cssText);
+      unsub2();
+    } finally {
+      if (hadWindow && g.window) {
+        delete g.window.RETUNE_WORKSPACE_INDEX;
+      } else {
+        delete g.window;
+      }
+    }
+  });
 });

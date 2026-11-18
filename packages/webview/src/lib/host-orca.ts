@@ -146,20 +146,46 @@ function findWorkspaceMatch(
     const byName = candidates.find((c) => baseNameNoExt(c) === componentName);
     if (byName) return byName;
   }
+  if (prevMatch && index.files[prevMatch] !== undefined) return prevMatch;
   return '';
 }
 
-function lookupWorkspaceCss(index: WorkspaceIndex | undefined, filePath: string): string {
-  if (!index?.cssByDir || !filePath) return '';
-  const parts = normSlashes(filePath).split('/');
-  parts.pop();
-  for (let i = 0; i < 4 && parts.length > 0; i++) {
-    const dir = parts.join('/');
-    if (index.cssByDir[dir]) return index.cssByDir[dir];
-    if (parts.length === 1) break;
+function lookupWorkspaceCss(index: WorkspaceIndex | undefined, filePath: string, sourceText = ''): string {
+  if (!index?.cssByDir) return '';
+  if (filePath) {
+    const parts = normSlashes(filePath).split('/');
     parts.pop();
+    for (let i = 0; i < 4 && parts.length > 0; i++) {
+      const dir = parts.join('/');
+      if (index.cssByDir[dir]) return index.cssByDir[dir];
+      if (parts.length === 1) break;
+      parts.pop();
+    }
   }
-  return '';
+  if (!sourceText) return '';
+  const classTokens = new Set<string>();
+  const clsRe = new RegExp('class(?:Name)?\\s*=\\s*(?:["\']([^"\']+)["\']|\\{\\s*`([^$`]+))', 'g');
+  let m: RegExpExecArray | null;
+  while ((m = clsRe.exec(sourceText)) !== null) {
+    const raw = (m[1] || m[2] || '').trim();
+    for (const tok of raw.split(/\s+/)) {
+      if (tok && !tok.endsWith('-')) classTokens.add(tok);
+    }
+  }
+  if (classTokens.size === 0) return '';
+  let bestCss = '';
+  let bestScore = 0;
+  for (const css of Object.values(index.cssByDir)) {
+    let score = 0;
+    for (const tok of classTokens) {
+      if (css.includes(`.${tok}`)) score += 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestCss = css;
+    }
+  }
+  return bestScore > 0 ? bestCss : '';
 }
 
 const SNAPSHOT_KEY = 'retune.snapshot';
@@ -476,7 +502,7 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
         nextSource,
         matchedPath ? { sourceId: matchedPath, resolveImport } : undefined
       );
-      const workspaceCss = lookupWorkspaceCss(workspaceIndex, matchedPath);
+      const workspaceCss = lookupWorkspaceCss(workspaceIndex, matchedPath, nextSource);
       meta = {
         componentName,
         filePath: matchedPath,
@@ -585,6 +611,7 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
         baselineClass: cls,
         baselineText: txt,
         computedStyle: null,
+        matchedCssRules: undefined,
         propValues: { ...stage.propValues, label: txt },
       };
       syncAll();

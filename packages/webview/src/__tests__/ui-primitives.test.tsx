@@ -45,4 +45,46 @@ describe('ui primitives', () => {
     expect(out.replace(/value="[^"]*"/g, '')).not.toMatch(OLD_PALETTE);
     expect(out).toContain('pad X'); expect(out).toContain('value="14"');
   });
+
+  it('populates layout, typography, and appearance controls from standard scale tokens and computedStyle', () => {
+    const scaleEd = createClassEditor('px-4 text-sm font-semibold rounded-lg', () => {});
+    const scaleHtml = html(
+      <div>
+        {scaleEd.lenRow('pad X', 'px', [], 0, 64)}
+        {scaleEd.lenRow('size', 'text', [], 8, 64)}
+        {scaleEd.weight}
+        {scaleEd.radiusPresets}
+      </div>
+    );
+    expect(scaleHtml).toContain('value="16"');
+    expect(scaleHtml).toContain('value="14"');
+    expect(scaleHtml).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>600</);
+    expect(scaleHtml).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>lg</);
+
+    const compEd = createClassEditor('primary', () => {}, 'none', {
+      px: '24px',
+      py: '12px',
+      w: '140px',
+      text: '15px',
+      fontWeight: '700',
+      bgColor: '#204b3b',
+      textColor: '#ffffff',
+      rounded: '12px',
+      opacity: '0.9',
+    });
+    const compHtml = html(
+      <div>
+        {compEd.lenRow('pad X', 'px', [], 0, 64)}
+        {compEd.col('bg')}
+        {compEd.weight}
+        {compEd.radiusPresets}
+        {compEd.opacity}
+      </div>
+    );
+    expect(compHtml).toContain('value="24"');
+    expect(compHtml).toContain('value="#204b3b"');
+    expect(compHtml).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>700</);
+    expect(compHtml).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>xl</);
+    expect(compHtml).toContain('value="0.9"');
+  });
 });

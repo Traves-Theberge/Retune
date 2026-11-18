@@ -79,7 +79,7 @@ export function ScrubInput({
           setDraft(null);
           onChange(`${next}${unit}`);
         }}
-        className={`${fieldClass} ${focusRing} w-12 px-1 py-0.5 text-[11px] font-mono text-right`}
+        className={`${fieldClass} ${focusRing} w-14 px-1 py-0.5 text-[11px] font-mono text-right`}
       />
       <IconButton icon={RotateCcw} label="Reset" onClick={onClear} disabled={!has} />
     </div>

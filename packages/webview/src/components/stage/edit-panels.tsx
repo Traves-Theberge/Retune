@@ -21,7 +21,12 @@ export function availablePanels(hasVariants: boolean): typeof PANELS {
 }
 
 export function EditPanel({ kind, store, onDone }: { kind: PanelKind; store: StageStore; onDone: () => void }) {
-  const ed = createClassEditor(store.stage.harmonicsClass, store.setClasses, store.stage.pseudoState ?? 'none');
+  const ed = createClassEditor(
+    store.stage.harmonicsClass,
+    store.setClasses,
+    store.stage.pseudoState ?? 'none',
+    store.stage.computedStyle
+  );
   const cva = store.meta?.cva;
   const hasVariants = Boolean(cva?.hasCva && cva && Object.keys(cva.variants).length > 0);
 
@@ -81,8 +86,8 @@ export function EditPanel({ kind, store, onDone }: { kind: PanelKind; store: Sta
           {ed.lenRow('pad X', 'px', PX, 0, 64)}
           {ed.lenRow('pad Y', 'py', PY, 0, 48)}
           {ed.lenRow('gap', 'gap', GAP, 0, 32)}
-          {ed.lenRow('width', 'w', [], 0, 600, 4)}
-          {ed.lenRow('height', 'h', HEIGHT, 0, 200)}
+          {ed.lenRow('width', 'w', [], 0, 1400, 4)}
+          {ed.lenRow('height', 'h', HEIGHT, 0, 1200)}
         </div>
       );
     case 'shape':

@@ -5,6 +5,7 @@ import {
   computeCvaBaseEdit,
   computeCvaVariantEdit,
   computeDefaultVariantEdit,
+  computeTextEdit,
   extractComponentName,
   extractCvaMetadata,
   extractPreviewTree,
@@ -20,6 +21,7 @@ import {
   type WebviewMessage,
 } from '@retune/core';
 import type { HostBridge } from './host';
+import { resolveSelectedElementText } from './preview';
 
 export interface OrcaDisposable {
   dispose(): void;
@@ -215,27 +217,63 @@ function fileClassesFor(meta: ComponentMetadata, state: StageState): string {
   return meta.elements?.[0]?.className ?? '';
 }
 
-function applyClassEdit(source: string, state: StageState, className: string): { ok: boolean; updated?: string; message: string } {
+function fileTextFor(meta: ComponentMetadata, state: StageState): string {
+  return resolveSelectedElementText(meta, state.targetElement, state.targetIndex ?? 0);
+}
+
+function applyClassEdit(
+  source: string,
+  state: StageState,
+  className: string,
+  text?: string
+): { ok: boolean; updated?: string; message: string } {
   try {
-    let edit: TextEdit | null = null;
-    if (state.cvaTarget) {
-      edit = computeCvaVariantEdit(source, state.cvaTarget.group, state.cvaTarget.key, className);
-      if (!edit) return { ok: false, message: `Variant "${state.cvaTarget.group}.${state.cvaTarget.key}" could not be edited` };
-    } else if (state.targetElement) {
-      const el = resolveElement(listElements(source), state.targetElement, state.targetIndex);
-      if (!el) return { ok: false, message: `No <${state.targetElement}> element found` };
-      edit = computeClassNameEdit(source, { offset: el.start }, className);
-    } else if (extractCvaMetadata(source).hasCva) {
-      edit = computeCvaBaseEdit(source, className);
-      if (!edit) return { ok: false, message: 'cva() base classes are not a plain string' };
-    } else {
-      edit = computeClassNameEdit(source, {}, className);
+    let next = source;
+    let didClass = false;
+    const classChanged = className !== state.baselineClass;
+    const textChanged = text !== undefined && text !== state.baselineText;
+
+    if (classChanged || !textChanged) {
+      let edit: TextEdit | null = null;
+      if (state.cvaTarget) {
+        edit = computeCvaVariantEdit(next, state.cvaTarget.group, state.cvaTarget.key, className);
+        if (!edit) return { ok: false, message: `Variant "${state.cvaTarget.group}.${state.cvaTarget.key}" could not be edited` };
+      } else if (state.targetElement) {
+        const el = resolveElement(listElements(next), state.targetElement, state.targetIndex);
+        if (!el) return { ok: false, message: `No <${state.targetElement}> element found` };
+        edit = computeClassNameEdit(next, { offset: el.start }, className);
+      } else if (extractCvaMetadata(next).hasCva) {
+        edit = computeCvaBaseEdit(next, className);
+        if (!edit) return { ok: false, message: 'cva() base classes are not a plain string' };
+      } else {
+        edit = computeClassNameEdit(next, {}, className);
+      }
+      if (edit) {
+        next = applyEdits(next, edit);
+        didClass = true;
+      } else if (!textChanged) {
+        return { ok: false, message: 'No JSX element found' };
+      }
     }
 
-    if (!edit) return { ok: false, message: 'No JSX element found' };
-    const updated = applyEdits(source, edit);
-    if (updated === source) return { ok: true, message: 'Already up to date' };
-    return { ok: true, updated, message: 'Synced to code' };
+    if (textChanged && !state.cvaTarget) {
+      const target = state.targetElement
+        ? { offset: resolveElement(listElements(next), state.targetElement, state.targetIndex)?.start }
+        : {};
+      if (state.targetElement && target.offset === undefined) {
+        return { ok: false, message: `No <${state.targetElement}> element found` };
+      }
+      const textEdit = computeTextEdit(next, target, text!);
+      if (!textEdit && !didClass) {
+        return { ok: false, message: 'No editable JSX text found' };
+      }
+      if (textEdit) {
+        next = applyEdits(next, textEdit);
+      }
+    }
+
+    if (next === source) return { ok: true, message: 'Already up to date' };
+    return { ok: true, updated: next, message: 'Synced to code' };
   } catch {
     return { ok: false, message: 'Could not parse file' };
   }
@@ -461,10 +499,21 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
         };
       }
       const fileCls = fileClassesFor(meta, stage);
+      const fileTxt = fileTextFor(meta, stage);
+      const labelClean = String(stage.propValues.label ?? '') === (stage.baselineText ?? '');
       if (firstLoad || stage.harmonicsClass === stage.baselineClass) {
         stage = { ...stage, harmonicsClass: fileCls, baselineClass: fileCls };
       } else {
         stage = { ...stage, baselineClass: fileCls };
+      }
+      if (firstLoad || labelClean) {
+        stage = {
+          ...stage,
+          baselineText: fileTxt,
+          propValues: { ...stage.propValues, label: fileTxt },
+        };
+      } else {
+        stage = { ...stage, baselineText: fileTxt };
       }
     } catch (err) {
       meta = lastGood;
@@ -523,13 +572,20 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
       const cls = ref
         ? resolveElement(meta.elements ?? [], ref.name, ref.index)?.className ?? ''
         : fileClassesFor(meta, { ...stage, targetElement: undefined, targetIndex: undefined, cvaTarget: null });
-      stage = {
+      const nextStage: StageState = {
         ...stage,
         targetElement: ref?.name,
         targetIndex: ref?.index,
         cvaTarget: null,
+      };
+      const txt = fileTextFor(meta, nextStage);
+      stage = {
+        ...nextStage,
         harmonicsClass: cls,
         baselineClass: cls,
+        baselineText: txt,
+        computedStyle: null,
+        propValues: { ...stage.propValues, label: txt },
       };
       syncAll();
       return;
@@ -556,9 +612,19 @@ export function createOrcaHost(orca: OrcaFrameApi): HostBridge {
     }
 
     if (message.type === 'MUTATE_CLASSES') {
-      const res = applyClassEdit(sourceText, stage, message.payload.className);
+      const res = applyClassEdit(sourceText, stage, message.payload.className, message.payload.text);
       if (res.ok && res.updated) {
-        stage = { ...stage, harmonicsClass: message.payload.className, baselineClass: message.payload.className };
+        stage = {
+          ...stage,
+          harmonicsClass: message.payload.className,
+          baselineClass: message.payload.className,
+          ...(message.payload.text !== undefined
+            ? {
+                baselineText: message.payload.text,
+                propValues: { ...stage.propValues, label: message.payload.text },
+              }
+            : {}),
+        };
         await commitDocument(res.updated);
       }
       emit({ type: 'MUTATION_RESULT', payload: { ok: res.ok, kind: 'classes', message: res.message } });

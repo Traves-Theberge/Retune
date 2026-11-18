@@ -40,6 +40,13 @@ export function parseCssColor(input: string): Rgba | null {
   return null;
 }
 
+export function cssColorToHex(input: string): string | undefined {
+  const rgba = parseCssColor(input);
+  if (!rgba || rgba[3] === 0) return undefined;
+  const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return `#${toHex(rgba[0])}${toHex(rgba[1])}${toHex(rgba[2])}`;
+}
+
 export function blendOver(fg: Rgba, bg: [number, number, number]): [number, number, number] {
   const a = fg[3];
   return [

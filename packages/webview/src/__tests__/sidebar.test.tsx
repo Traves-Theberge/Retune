@@ -50,4 +50,41 @@ describe('SidebarView', () => {
     const out = html(<SidebarView store={store({ dirty: true })} />).replace(/placeholder="[^"]*"/g, '').replace(/style="[^"]*"/g, '').replace(/value="[^"]*"/g, '');
     expect(out).not.toMatch(/zinc-|indigo-|rose-|emerald-|amber-|#[0-9a-f]{6}/i);
   });
+
+  it('populates Sidebar Content, Layout, Typography, and Appearance from selected element computedStyle', () => {
+    const out = html(
+      <SidebarView
+        store={store({
+          targetLabel: '<input>',
+          stage: {
+            ...DEFAULT_STAGE_STATE,
+            targetElement: 'input',
+            targetIndex: 0,
+            harmonicsClass: 'search-input',
+            baselineClass: 'search-input',
+            baselineText: 'Search tasks...',
+            propValues: { ...DEFAULT_STAGE_STATE.propValues, label: 'Search tasks...' },
+            computedStyle: {
+              px: '18px',
+              py: '10px',
+              w: '420px',
+              text: '16px',
+              fontWeight: '500',
+              bgColor: '#fafbf7',
+              textColor: '#203b30',
+              border: '1px',
+              borderColor: '#dce4d6',
+              rounded: '10px',
+            },
+          },
+        })}
+      />
+    );
+    expect(out).toContain('value="Search tasks..."');
+    expect(out).toContain('value="18"');
+    expect(out).toContain('value="16"');
+    expect(out).toContain('value="#fafbf7"');
+    expect(out).toContain('value="#203b30"');
+    expect(out).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>500</);
+  });
 });

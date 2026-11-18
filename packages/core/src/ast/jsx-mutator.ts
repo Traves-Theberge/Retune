@@ -38,9 +38,12 @@ export interface ElementInfo {
   line: number;
   column: number;
   className: string;
+  text?: string;
 }
 
 const CLASS_HELPERS = new Set(['cn', 'clsx', 'classnames', 'classNames', 'twMerge', 'cx']);
+const TEXT_ATTR_NAMES = ['value', 'defaultValue', 'placeholder', 'label', 'title'] as const;
+const VOID_TEXT_TAGS = new Set(['input', 'img', 'hr', 'br']);
 
 function parseSource(source: string) {
   return babelParse(source, {
@@ -77,35 +80,61 @@ function elementName(el: t.JSXOpeningElement): string {
   return '';
 }
 
-function openingElements(source: string): t.JSXOpeningElement[] {
-  const found: t.JSXOpeningElement[] = [];
+function jsxElements(source: string): t.JSXElement[] {
+  const found: t.JSXElement[] = [];
   walk(parseSource(source).program, (n) => {
-    if (t.isJSXOpeningElement(n)) found.push(n);
+    if (t.isJSXElement(n)) found.push(n);
   });
   return found;
+}
+
+function openingElements(source: string): t.JSXOpeningElement[] {
+  return jsxElements(source).map((el) => el.openingElement);
+}
+
+function pickTarget<T>(
+  items: T[],
+  getOpening: (item: T) => t.JSXOpeningElement,
+  target: ElementTarget = {}
+): T | undefined {
+  if (target.offset !== undefined) {
+    const offset = target.offset;
+    const exact = items.find((item) => getOpening(item).start === offset);
+    if (exact) return exact;
+    const containing = items
+      .filter((item) => {
+        const o = getOpening(item);
+        return o.start! <= offset && offset < o.end!;
+      })
+      .sort((a, b) => {
+        const oa = getOpening(a);
+        const ob = getOpening(b);
+        return oa.end! - oa.start! - (ob.end! - ob.start!);
+      });
+    if (containing[0]) return containing[0];
+  }
+  if (target.name) {
+    const wanted = target.name.toLowerCase();
+    const exact = items.find((item) => elementName(getOpening(item)) === target.name);
+    if (exact) return exact;
+    const loose = items.find((item) => elementName(getOpening(item)).toLowerCase() === wanted);
+    if (loose) return loose;
+  }
+  return items[0];
 }
 
 function findElement(
   elements: t.JSXOpeningElement[],
   target: ElementTarget = {}
 ): t.JSXOpeningElement | undefined {
-  if (target.offset !== undefined) {
-    const offset = target.offset;
-    const exact = elements.find((el) => el.start === offset);
-    if (exact) return exact;
-    const containing = elements
-      .filter((el) => el.start! <= offset && offset < el.end!)
-      .sort((a, b) => a.end! - a.start! - (b.end! - b.start!));
-    if (containing[0]) return containing[0];
-  }
-  if (target.name) {
-    const wanted = target.name.toLowerCase();
-    const exact = elements.find((el) => elementName(el) === target.name);
-    if (exact) return exact;
-    const loose = elements.find((el) => elementName(el).toLowerCase() === wanted);
-    if (loose) return loose;
-  }
-  return elements[0];
+  return pickTarget(elements, (el) => el, target);
+}
+
+function findJsxElement(
+  elements: t.JSXElement[],
+  target: ElementTarget = {}
+): t.JSXElement | undefined {
+  return pickTarget(elements, (el) => el.openingElement, target);
 }
 
 function classNameAttr(el: t.JSXOpeningElement): t.JSXAttribute | undefined {
@@ -175,6 +204,48 @@ function readClass(node: t.StringLiteral | t.TemplateLiteral): string {
   return t.isStringLiteral(node) ? node.value : node.quasis[0]?.value.cooked ?? '';
 }
 
+function directJsxTextChild(el: t.JSXElement): t.JSXText | undefined {
+  return el.children.find((ch): ch is t.JSXText => t.isJSXText(ch) && /\S/.test(ch.value));
+}
+
+function directStringExprChild(el: t.JSXElement): t.StringLiteral | t.TemplateLiteral | undefined {
+  for (const ch of el.children) {
+    if (!t.isJSXExpressionContainer(ch)) continue;
+    const expr = ch.expression;
+    if (t.isStringLiteral(expr) || isPlainTemplate(expr)) return expr;
+  }
+  return undefined;
+}
+
+function staticTextAttr(
+  opening: t.JSXOpeningElement
+): { attr: t.JSXAttribute; lit: t.StringLiteral | t.TemplateLiteral; text: string } | undefined {
+  for (const name of TEXT_ATTR_NAMES) {
+    const attr = opening.attributes.find(
+      (a): a is t.JSXAttribute => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name, { name })
+    );
+    if (!attr?.value) continue;
+    if (t.isStringLiteral(attr.value)) {
+      return { attr, lit: attr.value, text: attr.value.value };
+    }
+    if (t.isJSXExpressionContainer(attr.value)) {
+      const expr = attr.value.expression;
+      if (t.isStringLiteral(expr) || isPlainTemplate(expr)) {
+        return { attr, lit: expr, text: readClass(expr) };
+      }
+    }
+  }
+  return undefined;
+}
+
+function extractStaticText(el: t.JSXElement): string | undefined {
+  const txt = directJsxTextChild(el);
+  if (txt) return txt.value.replace(/\s+/g, ' ').trim();
+  const strExpr = directStringExprChild(el);
+  if (strExpr) return readClass(strExpr);
+  return staticTextAttr(el.openingElement)?.text;
+}
+
 function quoteFor(source: string, node: t.Node): '"' | "'" | '`' {
   const ch = source[node.start!];
   return ch === "'" || ch === '`' ? ch : '"';
@@ -203,22 +274,95 @@ export function extractElementClassName(source: string, targetComponent?: string
   }
 }
 
-/** List every JSX element that can be tuned, with its position and current classes. */
+/** Extract the static text/field content from the target JSX element or field attribute. */
+export function extractElementText(source: string, targetComponent?: string, offset?: number): string {
+  try {
+    const el = findJsxElement(jsxElements(source), { name: targetComponent, offset });
+    return el ? extractStaticText(el) ?? '' : '';
+  } catch {
+    return '';
+  }
+}
+
+/** List every JSX element that can be tuned, with its position, current classes, and static text. */
 export function listElements(source: string): ElementInfo[] {
   try {
-    return openingElements(source).map((el) => {
+    return jsxElements(source).map((el) => {
+      const opening = el.openingElement;
+      const text = extractStaticText(el);
       return {
-        name: elementName(el),
-        start: el.start!,
-        end: el.end!,
-        line: el.loc?.start.line ?? 0,
-        column: el.loc?.start.column ?? 0,
-        className: staticClasses(el),
+        name: elementName(opening),
+        start: opening.start!,
+        end: opening.end!,
+        line: opening.loc?.start.line ?? 0,
+        column: opening.loc?.start.column ?? 0,
+        className: staticClasses(opening),
+        ...(text !== undefined ? { text } : {}),
       };
     });
   } catch {
     return [];
   }
+}
+
+/** Compute the minimal edit that updates the text content or field text attribute of the target JSX element. */
+export function computeTextEdit(
+  source: string,
+  target: ElementTarget,
+  newText: string
+): TextEdit | null {
+  const el = findJsxElement(jsxElements(source), target);
+  if (!el) return null;
+
+  const txt = directJsxTextChild(el);
+  if (txt) {
+    const lead = txt.value.match(/^\s*/)?.[0].length ?? 0;
+    const trail = txt.value.match(/\s*$/)?.[0].length ?? 0;
+    return { start: txt.start! + lead, end: txt.end! - trail, text: newText };
+  }
+
+  const strExpr = directStringExprChild(el);
+  if (strExpr) {
+    const quote = quoteFor(source, strExpr);
+    return { start: strExpr.start!, end: strExpr.end!, text: `${quote}${escapeFor(newText, quote)}${quote}` };
+  }
+
+  const attrHit = staticTextAttr(el.openingElement);
+  if (attrHit) {
+    if (attrHit.lit === attrHit.attr.value) {
+      const preferred = source[attrHit.lit.start!] === "'" ? "'" : '"';
+      return { start: attrHit.lit.start!, end: attrHit.lit.end!, text: attrValueText(newText, preferred) };
+    }
+    const quote = quoteFor(source, attrHit.lit);
+    return { start: attrHit.lit.start!, end: attrHit.lit.end!, text: `${quote}${escapeFor(newText, quote)}${quote}` };
+  }
+
+  const opening = el.openingElement;
+  const tag = elementName(opening);
+  if (tag === 'input' || VOID_TEXT_TAGS.has(tag) || (tag === 'textarea' && opening.selfClosing)) {
+    const typeArgs = (opening as any).typeArguments ?? (opening as any).typeParameters;
+    const at = (typeArgs?.end ?? opening.name.end) as number;
+    return { start: at, end: at, text: ` placeholder=${attrValueText(newText)}` };
+  }
+
+  if (opening.selfClosing) {
+    return { start: opening.end! - 2, end: opening.end!, text: `>${newText}</${tag}>` };
+  }
+
+  if (el.closingElement) {
+    return { start: opening.end!, end: opening.end!, text: newText };
+  }
+
+  return null;
+}
+
+export function mutateElementText(
+  source: string,
+  targetComponent: string,
+  newText: string,
+  offset?: number
+): string {
+  return applyEdits(source, computeTextEdit(source, { name: targetComponent, offset }, newText));
 }
 
 /** Compute the minimal edit that sets `newClassName` on the target element. */

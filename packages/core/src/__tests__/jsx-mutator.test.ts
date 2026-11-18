@@ -3,12 +3,15 @@ import {
   applyEdits,
   computeClassNameEdit,
   computeDefaultVariantEdit,
+  computeTextEdit,
   extractComponentName,
   extractElementClassName,
+  extractElementText,
   extractPreviewTree,
   listElements,
   mutateClassName,
   mutateDefaultVariant,
+  mutateElementText,
 } from '../ast/jsx-mutator';
 
 describe('jsx-mutator: minimal, non-lossy edits', () => {
@@ -394,5 +397,59 @@ describe('final-review regressions', () => {
   it('A5: new attribute on a generic component goes after the type arguments', () => {
     const src = 'const x = <Foo<T> bar />;';
     expect(mutateClassName(src, 'Foo', 'p-1')).toBe('const x = <Foo<T> className="p-1" bar />;');
+  });
+});
+
+describe('jsx-mutator: text extraction and non-lossy text edits', () => {
+  it('extracts static text from JSX children and field attributes in listElements', () => {
+    const src = `
+      export function Form() {
+        return (
+          <form className="wrap">
+            <h2>\n  Daily Rhythm\n</h2>
+            <p>{'Check your posture'}</p>
+            <input placeholder="Search rituals..." />
+            <input value="Morning Stretch" />
+          </form>
+        );
+      }
+    `;
+    const els = listElements(src);
+    expect(els.find((e) => e.name === 'h2')?.text).toBe('Daily Rhythm');
+    expect(els.find((e) => e.name === 'p')?.text).toBe('Check your posture');
+    const inputs = els.filter((e) => e.name === 'input');
+    expect(inputs[0]?.text).toBe('Search rituals...');
+    expect(inputs[1]?.text).toBe('Morning Stretch');
+    expect(extractElementText(src, 'h2')).toBe('Daily Rhythm');
+  });
+
+  it('edits direct JSXText while preserving indentation and sibling comments/whitespace', () => {
+    const src = `export function Card() {\n  return (\n    <h2>\n      Old Title\n    </h2>\n  );\n}`;
+    const updated = mutateElementText(src, 'h2', 'New Title');
+    expect(updated).toBe(
+      `export function Card() {\n  return (\n    <h2>\n      New Title\n    </h2>\n  );\n}`
+    );
+  });
+
+  it('edits string literal expression children while preserving quotes', () => {
+    const src = `export function P() { return <p>{'Hello world'}</p>; }`;
+    const updated = mutateElementText(src, 'p', 'Updated copy');
+    expect(updated).toBe(`export function P() { return <p>{'Updated copy'}</p>; }`);
+  });
+
+  it('edits input placeholder and value attributes in place and inserts placeholder when absent', () => {
+    const phSrc = `<input type="search" placeholder='Search...' />`;
+    expect(mutateElementText(phSrc, 'input', 'Filter tasks...')).toBe(
+      `<input type="search" placeholder='Filter tasks...' />`
+    );
+
+    const valSrc = `<input value="Alpha" onChange={() => {}} />`;
+    expect(mutateElementText(valSrc, 'input', 'Beta')).toBe(
+      `<input value="Beta" onChange={() => {}} />`
+    );
+
+    const bareInput = `<input type="text" />`;
+    const edit = computeTextEdit(bareInput, { name: 'input' }, 'Type here');
+    expect(applyEdits(bareInput, edit)).toBe(`<input placeholder="Type here" type="text" />`);
   });
 });

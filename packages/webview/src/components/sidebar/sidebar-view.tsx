@@ -32,7 +32,7 @@ export function SidebarView({ store, embedded }: { store: StageStore; embedded?:
   const classes = stage.harmonicsClass;
   const activeState: PseudoStateMode = stage.pseudoState ?? 'none';
   const tokens = splitClasses(classes);
-  const ed = createClassEditor(classes, store.setClasses, activeState);
+  const ed = createClassEditor(classes, store.setClasses, activeState, stage.computedStyle);
   const props = meta?.props?.filter((p) => p.name !== 'label') ?? [];
   const fileName = meta?.filePath ? meta.filePath.split(/[\\/]/).pop() : '';
 
@@ -152,8 +152,8 @@ export function SidebarView({ store, embedded }: { store: StageStore; embedded?:
               {ed.lenRow('pad X', 'px', PX, 0, 64)}
               {ed.lenRow('pad Y', 'py', PY, 0, 48)}
               {ed.lenRow('gap', 'gap', GAP, 0, 32)}
-              {ed.lenRow('width', 'w', [], 0, 600, 4)}
-              {ed.lenRow('height', 'h', HEIGHT, 0, 200)}
+              {ed.lenRow('width', 'w', [], 0, 1400, 4)}
+              {ed.lenRow('height', 'h', HEIGHT, 0, 1200)}
             </Section>
 
             <Section title="Typography">

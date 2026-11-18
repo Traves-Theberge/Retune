@@ -94,12 +94,24 @@ export function reduce(model: StageModel, action: StageAction): StageModel {
     case 'patchConfig':
       return { ...model, config: { ...model.config, ...action.patch } };
     case 'markSynced':
-      return { ...model, stage: { ...model.stage, baselineClass: model.stage.harmonicsClass } };
+      return {
+        ...model,
+        stage: {
+          ...model.stage,
+          baselineClass: model.stage.harmonicsClass,
+          ...(model.stage.baselineText !== undefined
+            ? { baselineText: String(model.stage.propValues.label ?? '') }
+            : {}),
+        },
+      };
   }
 }
 
 export function isDirty(model: StageModel): boolean {
-  return model.stage.harmonicsClass !== model.stage.baselineClass;
+  const textDirty =
+    model.stage.baselineText !== undefined &&
+    String(model.stage.propValues.label ?? '') !== model.stage.baselineText;
+  return model.stage.harmonicsClass !== model.stage.baselineClass || textDirty;
 }
 
 export function computePreviewClass(model: StageModel, classes?: string): string {

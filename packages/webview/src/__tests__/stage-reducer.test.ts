@@ -74,4 +74,20 @@ describe('stage reducer', () => {
     expect(m.session.past).toEqual([]);
     expect(m.session.present).toBe('b');
   });
+
+  it('tracks text dirtiness via baselineText and clears it on markSynced', () => {
+    const m0 = reduce(base(), {
+      type: 'patchStage',
+      patch: { baselineText: 'Search...', propValues: { label: 'Search...' } },
+    });
+    expect(isDirty(m0)).toBe(false);
+    const edited = reduce(m0, {
+      type: 'patchStage',
+      patch: { propValues: { label: 'Filter tasks...' } },
+    });
+    expect(isDirty(edited)).toBe(true);
+    const synced = reduce(edited, { type: 'markSynced' });
+    expect(isDirty(synced)).toBe(false);
+    expect(synced.stage.baselineText).toBe('Filter tasks...');
+  });
 });

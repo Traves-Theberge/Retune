@@ -14,6 +14,7 @@ import { getRetuneConfig, updateRetuneConfig } from '../config/extension-config'
 import { buildWebviewHtml, getWebviewDistDir } from './webview-html';
 import {
   fileClassFor,
+  fileTextFor,
   findElementAtOffset,
   normalizeTarget,
   planClassMutation,
@@ -207,7 +208,8 @@ export class StagePanel {
         : !target.targetElement ||
           resolveTarget(elements, target.targetElement, target.targetIndex) !== undefined;
       const fileClass = resolves ? fileClassFor(meta.cva, elements, target) : next.baselineClass;
-      StagePanel._stageState = reconcile(next, fileClass, targetChanged);
+      const fileText = resolves ? fileTextFor(elements, target) : next.baselineText;
+      StagePanel._stageState = reconcile(next, fileClass, targetChanged, fileText);
     }
 
     if (StagePanel.currentPanel) {
@@ -326,15 +328,19 @@ export class StagePanel {
     }
 
     if (message.type === 'MUTATE_CLASSES') {
-      const { className } = message.payload;
+      const { className, text } = message.payload;
       const doc = StagePanel._activeDocument;
       const result = doc
-        ? await StagePanel._applyPlan(doc, planClassMutation(doc.getText(), StagePanel._stageState, className))
+        ? await StagePanel._applyPlan(
+            doc,
+            planClassMutation(doc.getText(), StagePanel._stageState, className, text)
+          )
         : { ok: false, message: 'No active component file' };
       if (result.ok) {
         StagePanel._stageState = {
           ...StagePanel._stageState,
           baselineClass: className,
+          ...(text !== undefined ? { baselineText: text } : {}),
         };
       }
       StagePanel.broadcast({ type: 'MUTATION_RESULT', payload: { ...result, kind: 'classes' } });
@@ -390,10 +396,12 @@ export class StagePanel {
     delete base.targetElement;
     delete base.targetIndex;
     delete base.cvaTarget;
+    const elements = meta.elements ?? [];
     StagePanel._stageState = reconcile(
       { ...base, ...target },
-      fileClassFor(meta.cva, meta.elements ?? [], target),
-      !sameTargetRef(current, target)
+      fileClassFor(meta.cva, elements, target),
+      !sameTargetRef(current, target),
+      fileTextFor(elements, target)
     );
   }
 
@@ -402,13 +410,16 @@ export class StagePanel {
     plan: MutationPlan
   ): Promise<{ ok: boolean; message: string }> {
     if (!plan.ok) return { ok: false, message: plan.message };
-    if (plan.edit) {
+    const edits = (plan.edits ?? (plan.edit ? [plan.edit] : [])).slice().sort((a, b) => b.start - a.start);
+    if (edits.length > 0) {
       const edit = new vscode.WorkspaceEdit();
-      edit.replace(
-        doc.uri,
-        new vscode.Range(doc.positionAt(plan.edit.start), doc.positionAt(plan.edit.end)),
-        plan.edit.text
-      );
+      for (const item of edits) {
+        edit.replace(
+          doc.uri,
+          new vscode.Range(doc.positionAt(item.start), doc.positionAt(item.end)),
+          item.text
+        );
+      }
       if (!(await vscode.workspace.applyEdit(edit))) {
         return { ok: false, message: 'VS Code rejected the edit' };
       }

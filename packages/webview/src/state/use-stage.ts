@@ -9,6 +9,7 @@ import type {
 } from '@retune/core';
 import { getHost } from '../lib/host';
 import { canRedo, canUndo, redo as redoSession, undo as undoSession } from '../lib/edit-session';
+import { resolveSelectedElementText } from '../lib/preview';
 import type { ElementRef } from '../components/shared/element-list';
 import type { ToastState, ToastTone } from '../components/ui';
 import {
@@ -111,13 +112,24 @@ export function useStage(): StageStore {
   }, [host]);
 
   const discard = useCallback(() => {
-    setClasses(modelRef.current.stage.baselineClass);
-  }, [setClasses]);
+    const { baselineClass, baselineText, propValues } = modelRef.current.stage;
+    setClasses(baselineClass);
+    if (baselineText !== undefined) {
+      dispatch({
+        type: 'patchStage',
+        patch: { propValues: { ...propValues, label: baselineText } },
+      });
+      host.post({ type: 'UPDATE_PROP_VALUE', payload: { propName: 'label', value: baselineText } });
+    }
+  }, [host, setClasses]);
 
   const sync = useCallback(() => {
     const { stage, meta, config } = modelRef.current;
+    const labelVal = String(stage.propValues.label ?? '');
+    const textChanged = stage.baselineText !== undefined && labelVal !== stage.baselineText;
+    const textPayload = textChanged ? { text: labelVal } : {};
     if (host.kind === 'vscode') {
-      host.post({ type: 'MUTATE_CLASSES', payload: { className: stage.harmonicsClass } });
+      host.post({ type: 'MUTATE_CLASSES', payload: { className: stage.harmonicsClass, ...textPayload } });
       return;
     }
     dispatch({ type: 'markSynced' });
@@ -128,7 +140,9 @@ export function useStage(): StageStore {
       body: JSON.stringify({
         fileContent: meta?.rawSource ?? '',
         componentName: stage.targetElement || meta?.componentName,
+        ...(stage.targetIndex !== undefined ? { targetIndex: stage.targetIndex } : {}),
         className: stage.harmonicsClass,
+        ...textPayload,
       }),
     })
       .then((res) => (res.ok ? res.json() : null))
@@ -183,19 +197,37 @@ export function useStage(): StageStore {
 
   const selectElement = useCallback(
     (ref: ElementRef | null) => {
+      const cur = modelRef.current;
+      const txt = resolveSelectedElementText(cur.meta, ref?.name, ref?.index ?? 0);
+      if (host.kind === 'vscode') {
+        dispatch({
+          type: 'patchStage',
+          patch: {
+            targetElement: ref?.name,
+            targetIndex: ref?.index,
+            cvaTarget: null,
+            baselineText: txt,
+            computedStyle: null,
+            propValues: { ...cur.stage.propValues, label: txt },
+          },
+        });
+      }
       host.post({ type: 'SELECT_ELEMENT', payload: ref });
       if (host.kind === 'standalone') {
         const cls = ref
-          ? modelRef.current.meta?.elements?.filter((el) => el.name === ref.name)[ref.index]?.className ?? ''
-          : modelRef.current.meta?.cva.hasCva
-          ? modelRef.current.meta.cva.baseClasses
-          : modelRef.current.meta?.elements?.[0]?.className ?? '';
+          ? cur.meta?.elements?.filter((el) => el.name === ref.name)[ref.index]?.className ?? ''
+          : cur.meta?.cva.hasCva
+          ? cur.meta.cva.baseClasses
+          : cur.meta?.elements?.[0]?.className ?? '';
         patchStage({
           targetElement: ref?.name,
           targetIndex: ref?.index,
           cvaTarget: null,
           harmonicsClass: cls,
           baselineClass: cls,
+          baselineText: txt,
+          computedStyle: null,
+          propValues: { ...cur.stage.propValues, label: txt },
         });
       }
     },

@@ -1,7 +1,9 @@
 import http from 'node:http';
 import {
+  applyEdits,
+  computeClassNameEdit,
+  computeTextEdit,
   listElements,
-  mutateClassName,
   mutateCvaBase,
   mutateCvaVariant,
   mutateDefaultVariant,
@@ -70,21 +72,33 @@ export function createRetuneDaemon(port = 49221) {
             cvaBase,
             cvaVariant,
             defaultVariant,
-            className = '',
+            className,
+            text,
           } = JSON.parse(body);
           let updated: string;
           if (defaultVariant?.group && defaultVariant?.value !== undefined) {
             updated = mutateDefaultVariant(fileContent, defaultVariant.group, defaultVariant.value);
           } else if (cvaVariant?.group && cvaVariant?.key) {
-            updated = mutateCvaVariant(fileContent, cvaVariant.group, cvaVariant.key, className);
+            updated = mutateCvaVariant(fileContent, cvaVariant.group, cvaVariant.key, className ?? '');
           } else if (cvaBase) {
-            updated = mutateCvaBase(fileContent, className);
-          } else if (typeof targetIndex === 'number' && componentName) {
-            const matches = listElements(fileContent).filter((el) => el.name === componentName);
-            const target = matches[targetIndex];
-            updated = mutateClassName(fileContent, componentName, className, target?.start);
+            updated = mutateCvaBase(fileContent, className ?? '');
           } else {
-            updated = mutateClassName(fileContent, componentName, className);
+            const target =
+              typeof targetIndex === 'number' && componentName
+                ? { offset: listElements(fileContent).filter((el) => el.name === componentName)[targetIndex]?.start }
+                : { name: componentName };
+            let next = fileContent;
+            if (typeof className === 'string') {
+              next = applyEdits(next, computeClassNameEdit(next, target, className));
+            }
+            if (typeof text === 'string') {
+              const textTarget =
+                typeof targetIndex === 'number' && componentName
+                  ? { offset: listElements(next).filter((el) => el.name === componentName)[targetIndex]?.start }
+                  : { name: componentName };
+              next = applyEdits(next, computeTextEdit(next, textTarget, text));
+            }
+            updated = next;
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ updatedContent: updated, success: true }));

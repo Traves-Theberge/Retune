@@ -1,10 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { CvaMetadata, PreviewNode, PseudoStateMode } from '@retune/core';
+import type { ComputedElementStyle, CvaMetadata, PreviewNode, PseudoStateMode } from '@retune/core';
 import type { StageStore } from '../../state/use-stage';
-import { contrastGrade, contrastRatio, isSmallTouchTarget } from '../../lib/a11y';
+import { contrastGrade, contrastRatio, cssColorToHex, isSmallTouchTarget } from '../../lib/a11y';
 import { parseArbitraryStyle, resolveSimulatedClasses, setArbitrary } from '../../lib/arbitrary-style';
 import { placePopover, type Rect, type Size } from '../../lib/placement';
-import { previewTag } from '../../lib/preview';
+import { previewNodeText, previewTag } from '../../lib/preview';
 import { scrubValue } from '../../lib/scrub';
 import { Popover } from '../ui';
 import { VIEWPORTS } from '../shared/viewports';
@@ -39,6 +39,38 @@ const VOID_TAGS = new Set([
   'input', 'img', 'hr', 'br', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon',
 ]);
 const PAGE_ROOT_TAGS = new Set(['main', 'section', 'article', 'aside', 'form', 'dialog', 'nav']);
+
+function roundPx(raw: string, step = 1, clampMax?: number): string | undefined {
+  const n = parseFloat(raw);
+  if (Number.isNaN(n)) return undefined;
+  const rounded = Math.round(n / step) * step;
+  const clamped = clampMax !== undefined ? Math.min(clampMax, rounded) : rounded;
+  return `${clamped}px`;
+}
+
+function extractComputedStyle(cs: CSSStyleDeclaration, measuredCss: Size): ComputedElementStyle {
+  const borderWidth = parseFloat(cs.borderTopWidth);
+  const hasBorder = !Number.isNaN(borderWidth) && borderWidth > 0;
+  const opacityNum = parseFloat(cs.opacity);
+  const gapRaw = cs.columnGap && cs.columnGap !== 'normal' ? cs.columnGap : cs.gap;
+  return {
+    px: roundPx(cs.paddingLeft),
+    py: roundPx(cs.paddingTop),
+    gap: gapRaw && gapRaw !== 'normal' ? roundPx(gapRaw) : undefined,
+    w: `${measuredCss.width}px`,
+    h: `${measuredCss.height}px`,
+    text: roundPx(cs.fontSize),
+    fontWeight: cs.fontWeight || undefined,
+    tracking: cs.letterSpacing && cs.letterSpacing !== 'normal' ? roundPx(cs.letterSpacing, 0.5) : undefined,
+    textColor: cssColorToHex(cs.color),
+    bgColor: cssColorToHex(cs.backgroundColor),
+    border: roundPx(cs.borderTopWidth),
+    borderColor: hasBorder ? cssColorToHex(cs.borderTopColor) : undefined,
+    rounded: roundPx(cs.borderTopLeftRadius, 1, 999),
+    shadow: cs.boxShadow && cs.boxShadow !== 'none' ? 'md' : 'none',
+    opacity: !Number.isNaN(opacityNum) ? String(Math.round(opacityNum * 100) / 100) : undefined,
+  };
+}
 
 function countTreeNodes(node: PreviewNode | null | undefined): number {
   if (!node) return 0;
@@ -141,10 +173,12 @@ export function Stage({
   const lastClickRef = useRef<{ name: string; index: number } | null>(null);
   const prevFileRef = useRef<string | undefined>(meta?.filePath);
   const activeScaleRef = useRef(1);
+  const lastComputedRef = useRef<string>('');
   const dragRef = useRef<{ axis: 'width' | 'height'; startPos: number; baseVal: number; scale: number } | null>(null);
 
   useEffect(() => {
     setSelected(true);
+    lastComputedRef.current = '';
     if (prevFileRef.current !== meta?.filePath) {
       prevFileRef.current = meta?.filePath;
       selectedDomRef.current = null;
@@ -203,6 +237,12 @@ export function Stage({
         const backdrop: [number, number, number] = tone === 'light' ? [255, 255, 255] : [18, 18, 22];
         const ratio = contrastRatio(cs.color, cs.backgroundColor, backdrop);
         setContrast((prev) => (prev === ratio ? prev : ratio));
+        const nextComputed = extractComputedStyle(cs, measuredCss);
+        const sig = JSON.stringify(nextComputed);
+        if (sig !== lastComputedRef.current) {
+          lastComputedRef.current = sig;
+          store.patchStage({ computedStyle: nextComputed });
+        }
       }
     }
     if (t) {
@@ -366,6 +406,18 @@ export function Stage({
       style: Object.keys(nodeStyle).length > 0 ? nodeStyle : undefined,
     };
 
+    const isField = elTag === 'input' || elTag === 'textarea';
+    const nodeDefaultText = previewNodeText(node);
+    const hasLiveLabel = isTarget && stage.propValues.label !== undefined;
+    const hasCustomText =
+      hasLiveLabel &&
+      (stage.baselineText === undefined || String(stage.propValues.label) !== stage.baselineText || comparing);
+    const liveText = hasLiveLabel
+      ? comparing
+        ? stage.baselineText ?? nodeDefaultText
+        : String(stage.propValues.label)
+      : nodeDefaultText;
+
     if (node.elementIndex >= 0) {
       const selectClickedNode = (targetEl: EventTarget | null) => {
         const elDom = targetEl as HTMLElement | null;
@@ -396,28 +448,65 @@ export function Stage({
         selectClickedNode(e.currentTarget);
         setMenu({ x: e.clientX, y: e.clientY });
       };
+      if (isField) {
+        commonProps.onFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+          if (!isTarget) selectClickedNode(e.currentTarget);
+        };
+        commonProps.onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+          if (!isTarget) selectClickedNode(e.currentTarget);
+          store.setProp('label', e.target.value);
+        };
+      }
+    }
+    if (isField && hasCustomText) {
+      const hadValueAttr =
+        node.attrs?.value !== undefined || node.attrs?.defaultValue !== undefined || elTag === 'textarea';
+      if (hadValueAttr) {
+        delete commonProps.defaultValue;
+        commonProps.value = liveText;
+      } else {
+        commonProps.placeholder = liveText;
+      }
+    } else if (elTag === 'textarea' && nodeDefaultText && commonProps.defaultValue === undefined) {
+      commonProps.defaultValue = nodeDefaultText;
     }
     if (elTag === 'form') {
       commonProps.onSubmit = (e: React.FormEvent) => e.preventDefault();
     }
 
-    if (isVoid) {
+    if (isVoid || elTag === 'textarea') {
       return <El key={key} {...(commonProps as any)} />;
     }
 
+    let replacedTextChild = false;
+    const renderChildren =
+      hasCustomText && node.children.some((c) => c.tag === '#text')
+        ? node.children.map((c) => {
+            if (!replacedTextChild && c.tag === '#text') {
+              replacedTextChild = true;
+              return { ...c, text: liveText };
+            }
+            return c;
+          })
+        : node.children;
+
     const leafFallback =
-      node.text !== undefined
-        ? isRoot && stage.propValues.label
-          ? String(stage.propValues.label)
-          : node.text
-        : isRoot && (elTag === 'button' || elTag === 'a')
-          ? label
-          : null;
+      hasCustomText && node.children.length === 0
+        ? liveText
+        : node.text !== undefined
+          ? hasCustomText
+            ? liveText
+            : isRoot && stage.propValues.label
+              ? String(stage.propValues.label)
+              : node.text
+          : isRoot && (elTag === 'button' || elTag === 'a')
+            ? label
+            : null;
 
     return (
       <El key={key} {...(commonProps as any)}>
-        {node.children.length > 0
-          ? node.children.map((child, idx) =>
+        {renderChildren.length > 0
+          ? renderChildren.map((child, idx) =>
               renderTree(child, false, idx, ancestorMatchedTarget || isTarget, subcompKey ?? inheritedSubcomp)
             )
           : leafFallback}
@@ -478,9 +567,11 @@ export function Stage({
   };
 
   return (
-    <div
+      <div
       ref={containerRef}
-      onClick={() => {
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
         setSelected(false);
         setPanel(null);
         setMenu(null);

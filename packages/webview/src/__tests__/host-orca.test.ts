@@ -107,6 +107,13 @@ export function FeatureCard() {
     const latestStage = messages.filter((m) => m.type === 'SYNC_STAGE_STATE').pop() as any;
     expect(latestStage?.payload?.targetElement).toBe('span');
     expect(latestStage?.payload?.harmonicsClass).toBe('text-sm');
+    expect(latestStage?.payload?.baselineText).toBe('Hi');
+    expect(latestStage?.payload?.propValues?.label).toBe('Hi');
+
+    // Sync edited classes and text together from inspector to source document
+    panelHost.post({ type: 'MUTATE_CLASSES', payload: { className: 'text-base', text: 'Updated Hi' } });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(docText).toContain('<span className="text-base">Updated Hi</span>');
 
     unsub();
     unsubPanel();

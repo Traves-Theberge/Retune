@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import type { PseudoStateMode } from '@retune/core';
+import type { ComputedElementStyle, PseudoStateMode } from '@retune/core';
 import { getArbitrary, setArbitrary, splitClasses, statePrefix } from '../lib/arbitrary-style';
 import { scrubValue } from '../lib/scrub';
 import { ColorField, Row, ScrubInput, Segmented } from './ui';
@@ -26,6 +26,51 @@ export const BG_PRESETS = [
   { token: 'bg-transparent', name: 'Transparent', color: 'transparent' },
 ];
 export const BG_TOKENS = BG_PRESETS.map((p) => p.token);
+
+const SCALE_LENGTHS: Record<string, string> = {
+  'px-2': '8px', 'px-3': '12px', 'px-4': '16px', 'px-6': '24px', 'px-8': '32px',
+  'py-1': '4px', 'py-1.5': '6px', 'py-2': '8px', 'py-2.5': '10px', 'py-3': '12px',
+  'gap-1': '4px', 'gap-1.5': '6px', 'gap-2': '8px', 'gap-3': '12px', 'gap-4': '16px',
+  'h-7': '28px', 'h-8': '32px', 'h-9': '36px', 'h-10': '40px', 'h-11': '44px', 'h-12': '48px',
+  'text-xs': '12px', 'text-sm': '14px', 'text-base': '16px', 'text-lg': '18px',
+  'rounded-none': '0px', 'rounded': '4px', 'rounded-md': '6px', 'rounded-lg': '8px',
+  'rounded-xl': '12px', 'rounded-full': '999px',
+};
+
+const SCALE_COLORS: Record<string, string> = {
+  ...Object.fromEntries(BG_PRESETS.filter((p) => p.color.startsWith('#')).map((p) => [p.token, p.color])),
+  'text-white': '#ffffff',
+  'text-zinc-100': '#f4f4f5',
+  'text-zinc-300': '#d4d4d8',
+  'border-zinc-700': '#3f3f46',
+};
+
+function weightPresetFromComputed(weight?: string): string | undefined {
+  const n = weight ? parseInt(weight, 10) : NaN;
+  if (Number.isNaN(n)) return undefined;
+  if (n >= 700) return 'font-bold';
+  if (n >= 600) return 'font-semibold';
+  if (n >= 500) return 'font-medium';
+  return 'font-normal';
+}
+
+function radiusPresetFromComputed(rounded?: string): string | undefined {
+  const n = rounded ? parseFloat(rounded) : NaN;
+  if (Number.isNaN(n)) return undefined;
+  if (n <= 0) return 'rounded-none';
+  if (n >= 100) return 'rounded-full';
+  if (n >= 11) return 'rounded-xl';
+  if (n >= 8) return 'rounded-lg';
+  if (n >= 5) return 'rounded-md';
+  return 'rounded';
+}
+
+function shadowPresetFromComputed(shadow?: string): string | undefined {
+  if (!shadow) return undefined;
+  if (shadow === 'none') return 'shadow-none';
+  if (shadow === 'md') return 'shadow';
+  return SHADOW.includes(shadow) ? shadow : undefined;
+}
 
 /* ---------- Scrubbable length row ---------- */
 
@@ -66,25 +111,57 @@ export function LengthRow({
 export function createClassEditor(
   classes: string,
   set: (next: string) => void,
-  state: PseudoStateMode = 'none'
+  state: PseudoStateMode = 'none',
+  computed?: ComputedElementStyle | null
 ) {
   const mod = statePrefix(state);
+  const tokens = splitClasses(classes);
   const prefixed = (group: string[]) => group.map((t) => `${mod}${t}`);
+
+  const stateCores = () =>
+    tokens
+      .filter((tok) => (mod === '' ? !tok.includes(':') : tok.startsWith(mod)))
+      .map((tok) => (mod ? tok.slice(mod.length) : tok));
 
   const activePreset = (group: string[]) => {
     const targets = prefixed(group);
-    const match = splitClasses(classes).find((t) => targets.includes(t));
+    const match = tokens.find((t) => targets.includes(t));
     return match ? match.slice(mod.length) : undefined;
   };
 
   const pickPreset = (group: string[], token: string) => {
     const targets = prefixed(group);
-    const filtered = splitClasses(classes).filter((t) => !targets.includes(t));
+    const filtered = tokens.filter((t) => !targets.includes(t));
     set([...filtered, `${mod}${token}`].join(' '));
   };
 
+  const resolveScaleLength = (prefix: string): string | undefined => {
+    for (const core of stateCores()) {
+      if (core !== prefix && !core.startsWith(`${prefix}-`)) continue;
+      if (SCALE_LENGTHS[core]) return SCALE_LENGTHS[core];
+      if (prefix === 'border') {
+        if (core === 'border') return '1px';
+        const bw = /^border-(\d+)$/.exec(core);
+        if (bw) return `${bw[1]}px`;
+      }
+      const sp = /^(?:px|py|gap|w|h)-(\d+(?:\.5)?)$/.exec(core);
+      if (sp) return `${parseFloat(sp[1]) * 4}px`;
+    }
+    return undefined;
+  };
+
+  const resolveScaleColor = (prefix: string): string | undefined => {
+    for (const core of stateCores()) {
+      if (core.startsWith(`${prefix}-`) && SCALE_COLORS[core]) return SCALE_COLORS[core];
+    }
+    return undefined;
+  };
+
   const lenProps = (prefix: string, conflicts: string[]) => ({
-    value: getArbitrary(classes, prefix, 'length', state),
+    value:
+      getArbitrary(classes, prefix, 'length', state) ??
+      resolveScaleLength(prefix) ??
+      (state === 'none' ? computed?.[prefix as keyof ComputedElementStyle] : undefined),
     onChange: (v: string) => set(setArbitrary(classes, prefix, v, { kind: 'length', conflicts, state })),
     onClear: () => set(setArbitrary(classes, prefix, null, { kind: 'length', state })),
   });
@@ -97,17 +174,27 @@ export function createClassEditor(
     <LengthRow label={label} min={min} max={max} step={step} {...lenProps(prefix, conflicts)} />
   );
 
-  const col = (prefix: string, conflicts: string[] = []) => (
-    <ColorField
-      value={getArbitrary(classes, prefix, 'color', state)}
-      onChange={(v) => set(setArbitrary(classes, prefix, v, { kind: 'color', conflicts, state }))}
-      onClear={() => set(setArbitrary(classes, prefix, null, { kind: 'color', state }))}
-    />
-  );
+  const col = (prefix: string, conflicts: string[] = []) => {
+    const computedColor =
+      state === 'none'
+        ? prefix === 'bg'
+          ? computed?.bgColor
+          : prefix === 'text'
+            ? computed?.textColor
+            : computed?.borderColor
+        : undefined;
+    return (
+      <ColorField
+        value={getArbitrary(classes, prefix, 'color', state) ?? resolveScaleColor(prefix) ?? computedColor}
+        onChange={(v) => set(setArbitrary(classes, prefix, v, { kind: 'color', conflicts, state }))}
+        onClear={() => set(setArbitrary(classes, prefix, null, { kind: 'color', state }))}
+      />
+    );
+  };
 
   const opacity = (
     <ScrubInput
-      value={getArbitrary(classes, 'opacity', undefined, state)}
+      value={getArbitrary(classes, 'opacity', undefined, state) ?? (state === 'none' ? computed?.opacity : undefined)}
       min={0}
       max={1}
       step={0.05}
@@ -147,7 +234,7 @@ export function createClassEditor(
         { id: 'font-semibold', label: '600' },
         { id: 'font-bold', label: '700' },
       ]}
-      active={activePreset(WEIGHT)}
+      active={activePreset(WEIGHT) ?? (state === 'none' ? weightPresetFromComputed(computed?.fontWeight) : undefined)}
       onPick={(id) => pickPreset(WEIGHT, id)}
     />
   );
@@ -162,7 +249,7 @@ export function createClassEditor(
         { id: 'rounded-xl', label: 'xl' },
         { id: 'rounded-full', label: '∞' },
       ]}
-      active={activePreset(RADIUS)}
+      active={activePreset(RADIUS) ?? (state === 'none' ? radiusPresetFromComputed(computed?.rounded) : undefined)}
       onPick={(id) => pickPreset(RADIUS, id)}
     />
   );
@@ -176,7 +263,7 @@ export function createClassEditor(
         { id: 'shadow-lg', label: 'lg' },
         { id: 'shadow-xl', label: 'xl' },
       ]}
-      active={activePreset(SHADOW)}
+      active={activePreset(SHADOW) ?? (state === 'none' ? shadowPresetFromComputed(computed?.shadow) : undefined)}
       onPick={(id) => pickPreset(SHADOW, id)}
     />
   );

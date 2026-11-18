@@ -4,6 +4,7 @@ import {
   computeCvaBaseEdit,
   computeCvaVariantEdit,
   computeDefaultVariantEdit,
+  computeTextEdit,
   extractCvaMetadata,
   listElements,
   type CvaMetadata,
@@ -21,7 +22,7 @@ export interface TargetRef {
 }
 
 export type MutationPlan =
-  | { ok: true; edit: TextEdit | null; message: string }
+  | { ok: true; edit: TextEdit | null; edits?: TextEdit[]; message: string }
   | { ok: false; message: string };
 
 /** Nth element whose name === name (exact, case-sensitive). */
@@ -74,11 +75,37 @@ export function fileClassFor(cva: CvaMetadata, elements: ElementInfo[], target: 
   return elements[0]?.className ?? '';
 }
 
-export function reconcile(state: StageState, fileClass: string, targetChanged: boolean): StageState {
-  if (targetChanged || state.harmonicsClass === state.baselineClass) {
-    return { ...state, harmonicsClass: fileClass, baselineClass: fileClass };
+export function fileTextFor(elements: ElementInfo[], target: TargetRef): string {
+  if (target.targetElement) {
+    return resolveTarget(elements, target.targetElement, target.targetIndex)?.text ?? '';
   }
-  return { ...state, baselineClass: fileClass };
+  return elements[0]?.text ?? '';
+}
+
+export function reconcile(
+  state: StageState,
+  fileClass: string,
+  targetChanged: boolean,
+  fileText?: string
+): StageState {
+  const next: StageState =
+    targetChanged || state.harmonicsClass === state.baselineClass
+      ? { ...state, harmonicsClass: fileClass, baselineClass: fileClass }
+      : { ...state, baselineClass: fileClass };
+
+  if (targetChanged) {
+    next.computedStyle = null;
+  }
+
+  if (fileText !== undefined) {
+    const labelClean = String(state.propValues.label ?? '') === (state.baselineText ?? '');
+    next.baselineText = fileText;
+    if (targetChanged || labelClean) {
+      next.propValues = { ...state.propValues, label: fileText };
+    }
+  }
+
+  return next;
 }
 
 function noop(): MutationPlan {
@@ -107,23 +134,70 @@ export function planCvaVariantMutation(
   }
 }
 
-export function planClassMutation(source: string, target: TargetRef, className: string): MutationPlan {
+export function planClassMutation(
+  source: string,
+  target: TargetRef,
+  className: string,
+  newText?: string
+): MutationPlan {
   try {
     if (target.cvaTarget) {
       return planCvaVariantMutation(source, target.cvaTarget.group, target.cvaTarget.key, className);
     }
+
+    const elements = listElements(source);
+    let classEdit: TextEdit | null = null;
+    let textTarget: { offset?: number } = {};
+
     if (target.targetElement) {
-      const el = resolveTarget(listElements(source), target.targetElement, target.targetIndex);
+      const el = resolveTarget(elements, target.targetElement, target.targetIndex);
       if (!el) return { ok: false, message: `No <${target.targetElement}> element found` };
-      return finish(source, computeClassNameEdit(source, { offset: el.start }, className));
+      textTarget = { offset: el.start };
+      classEdit = computeClassNameEdit(source, textTarget, className);
+    } else if (extractCvaMetadata(source).hasCva) {
+      classEdit = computeCvaBaseEdit(source, className);
+      if (!classEdit && newText === undefined) {
+        return { ok: false, message: 'cva() base classes are not a plain string' };
+      }
+    } else {
+      if (elements.length === 0) return { ok: false, message: 'No JSX element found' };
+      classEdit = computeClassNameEdit(source, {}, className);
     }
-    if (extractCvaMetadata(source).hasCva) {
-      const edit = computeCvaBaseEdit(source, className);
-      if (!edit) return { ok: false, message: 'cva() base classes are not a plain string' };
-      return finish(source, edit);
+
+    const classChanged = Boolean(classEdit && applyEdits(source, classEdit) !== source);
+    const activeClassEdit = classChanged ? classEdit : null;
+
+    if (newText === undefined) {
+      return finish(source, classEdit);
     }
-    if (listElements(source).length === 0) return { ok: false, message: 'No JSX element found' };
-    return finish(source, computeClassNameEdit(source, {}, className));
+
+    const textEdit = computeTextEdit(source, textTarget, newText);
+    const textChanged = Boolean(textEdit && applyEdits(source, textEdit) !== source);
+    const activeTextEdit = textChanged ? textEdit : null;
+
+    if (!activeClassEdit && !activeTextEdit) return noop();
+    if (activeClassEdit && !activeTextEdit) return { ok: true, edit: activeClassEdit, message: 'Synced to code' };
+    if (!activeClassEdit && activeTextEdit) return { ok: true, edit: activeTextEdit, message: 'Synced to code' };
+
+    const a = activeClassEdit!;
+    const b = activeTextEdit!;
+    if (a.start === a.end && b.start === b.end && a.start === b.start) {
+      return {
+        ok: true,
+        edit: { start: a.start, end: a.end, text: `${a.text}${b.text}` },
+        message: 'Synced to code',
+      };
+    }
+    if (a.end <= b.start || b.end <= a.start) {
+      return { ok: true, edit: a, edits: [a, b], message: 'Synced to code' };
+    }
+    const intermediate = applyEdits(source, a);
+    const nextTextTarget = target.targetElement
+      ? { offset: resolveTarget(listElements(intermediate), target.targetElement, target.targetIndex)?.start }
+      : {};
+    const seqText = computeTextEdit(intermediate, nextTextTarget, newText);
+    const combined = seqText ? applyEdits(intermediate, seqText) : intermediate;
+    return { ok: true, edit: { start: 0, end: source.length, text: combined }, message: 'Synced to code' };
   } catch {
     return { ok: false, message: 'Could not parse file' };
   }

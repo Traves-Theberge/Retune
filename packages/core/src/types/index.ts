@@ -48,12 +48,32 @@ export interface ComponentMetadata {
 
 export type PseudoStateMode = 'none' | 'hover' | 'focus' | 'active';
 
+export interface ComputedElementStyle {
+  px?: string;
+  py?: string;
+  gap?: string;
+  w?: string;
+  h?: string;
+  text?: string;
+  fontWeight?: string;
+  tracking?: string;
+  textColor?: string;
+  bgColor?: string;
+  border?: string;
+  borderColor?: string;
+  rounded?: string;
+  shadow?: string;
+  opacity?: string;
+}
+
 export interface StageState {
   targetElement?: string;
   selectedVariants: Record<string, string>;
   propValues: Record<string, string | boolean | number>;
   harmonicsClass: string;
   baselineClass: string;
+  baselineText?: string;
+  computedStyle?: ComputedElementStyle | null;
   targetIndex?: number;
   cvaTarget?: { group: string; key: string } | null;
   pseudoState?: PseudoStateMode;
@@ -70,7 +90,7 @@ export interface FileProblem {
 
 export type WebviewMessage =
   | { type: 'READY' }
-  | { type: 'MUTATE_CLASSES'; payload: { className: string } }
+  | { type: 'MUTATE_CLASSES'; payload: { className: string; text?: string } }
   | { type: 'SELECT_ELEMENT'; payload: { name: string; index: number } | null }
   | { type: 'SELECT_CVA_TARGET'; payload: { group: string; key: string } | null }
   | { type: 'MUTATE_VARIANT'; payload: { variantGroup: string; variantValue: string } }

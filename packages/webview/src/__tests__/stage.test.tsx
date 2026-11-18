@@ -252,4 +252,56 @@ describe('stage pieces', () => {
     expect(out.match(/data-retune-target="true"/g)?.length).toBe(1);
     expect(out.match(/data-retune-subcomp="TaskAnimation:0"/g)?.length).toBe(1);
   });
+
+  it('reflects live text and input field placeholder/value edits for the selected element', () => {
+    const out = html(
+      <Stage
+        store={store({
+          stage: {
+            ...DEFAULT_STAGE_STATE,
+            targetElement: 'input',
+            targetIndex: 1,
+            baselineClass: 'field-box',
+            harmonicsClass: 'field-box',
+            baselineText: 'Old placeholder',
+            propValues: { label: 'Edited field text' },
+          },
+          previewClass: 'field-box',
+          baselinePreviewClass: 'field-box',
+          meta: {
+            ...DEMO_META,
+            componentName: 'SearchForm',
+            cva: { hasCva: false, variants: {}, defaultVariants: {}, baseClasses: '' },
+            previewTree: {
+              tag: 'form',
+              elementIndex: 0,
+              className: 'search-form',
+              children: [
+                {
+                  tag: 'input',
+                  elementIndex: 0,
+                  className: 'first-in',
+                  attrs: { value: 'Morning Stretch' },
+                  children: [],
+                },
+                {
+                  tag: 'input',
+                  elementIndex: 1,
+                  className: 'field-box',
+                  attrs: { placeholder: 'Old placeholder' },
+                  children: [],
+                },
+              ],
+            },
+          },
+        })}
+        tone="dark"
+        comparing={false}
+        onToggleTone={noop}
+      />
+    );
+    expect(out).toContain('value="Morning Stretch"');
+    expect(out).toContain('placeholder="Edited field text"');
+    expect(out).toContain('data-retune-target="true"');
+  });
 });

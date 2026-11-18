@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyEdits, extractCvaMetadata, listElements, type StageState } from '@retune/core';
-import { fileClassFor, findElementAtOffset, normalizeTarget, planClassMutation, planCvaVariantMutation, planVariantMutation, reconcile, resolveTarget, sameTargetRef } from '../state/stage-state';
+import { fileClassFor, fileTextFor, findElementAtOffset, normalizeTarget, planClassMutation, planCvaVariantMutation, planVariantMutation, reconcile, resolveTarget, sameTargetRef } from '../state/stage-state';
 
 const SRC = `const b = cva('base-a', { variants: {}, defaultVariants: { size: 'sm' } });
 export const A = () => (
@@ -115,5 +115,30 @@ export const A = () => (<div><span>one</span><span>two</span></div>);`;
     expect(findElementAtOffset(els, offset)).toEqual({ targetElement: 'span', targetIndex: 0 });
     const secondOffset = VSRC.lastIndexOf('<span') + 2;
     expect(findElementAtOffset(els, secondOffset)).toEqual({ targetElement: 'span', targetIndex: 1 });
+  });
+
+  it('reconciles selected element text and plans combined class + text edits', () => {
+    const els = listElements(SRC);
+    expect(fileTextFor(els, { targetElement: 'span', targetIndex: 1 })).toBe('2');
+
+    const prevState: StageState = {
+      ...state('one', 'one'),
+      targetElement: 'span',
+      targetIndex: 0,
+      baselineText: '1',
+      propValues: { label: '1' },
+      computedStyle: { px: '12px' },
+    };
+    const nextState = reconcile(prevState, 'two', true, '2');
+    expect(nextState.baselineText).toBe('2');
+    expect(nextState.propValues.label).toBe('2');
+    expect(nextState.computedStyle).toBeNull();
+
+    const plan = planClassMutation(SRC, { targetElement: 'span', targetIndex: 1 }, 'two p-4', 'Updated Two');
+    expect(plan.ok).toBe(true);
+    if (plan.ok) {
+      const updated = applyEdits(SRC, plan.edits ?? plan.edit);
+      expect(updated).toContain('<span className="two p-4">Updated Two</span>');
+    }
   });
 });

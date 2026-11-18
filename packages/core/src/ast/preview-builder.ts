@@ -52,9 +52,15 @@ const STYLE_KEYS = new Set([
 ]);
 
 const SKIP_UNKNOWN_GUARD_RE =
-  /^(error|err|loading|isLoading|loadFailed|failed|editing|removing|renaming|reauth|setup|open|addOpen|rescheduleModalOpen|blockedModalOpen|hasError|pendingCleanup|ended|checking|hasActiveFilters|saving|isSaving|deleting|isDeleting|submitting|confirming|isEmpty|showEmpty|copied|restarting|exporting|importing|unchecked|anyUnknown)$/i;
+  /^(error|err|loading|isLoading|loadFailed|failed|editing|removing|renaming|reauth|setup|open|addOpen|rescheduleModalOpen|blockedModalOpen|hasError|pendingCleanup|ended|checking|hasActiveFilters|saving|isSaving|deleting|isDeleting|submitting|confirming|isEmpty|showEmpty|copied|restarting|exporting|importing|unchecked|anyUnknown|message|warning|taskId|activeTask|selectedId)$/i;
 const DATA_COLLECTION_STATE_RE =
   /^(data|devices|items|tasks|events|occurrences|records|results|rows|list|entries|failures|snapshot|avatar|client)$/i;
+const EMPTY_DYNAMIC_LIST_RE =
+  /^(attention|unchosen|unknownSourceIds|failures|errors|truncated|warnings|pending)$/i;
+
+function isSafeAttrName(key: string): boolean {
+  return SAFE_ATTR_NAMES.has(key) || /^data-[a-z0-9-]+$/i.test(key);
+}
 
 const FALLBACK_ICON_PATHS: Record<string, string> = {
   'arrow-left': 'M19 12H5m6-6-6 6 6 6',
@@ -95,7 +101,7 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
   {
     name: 'Morning Stretch',
     label: 'Daily rituals',
-    title: 'Screen & Eye Rest',
+    title: 'Shoulder & Neck Relief',
     instruction: 'Look 20 feet away and roll your shoulders back.',
     group: 'Daily rituals',
     category: 'Mobility',
@@ -118,6 +124,8 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     completed: 6,
     rate: 75,
     at: '10:30 AM',
+    date: '2026-05-01',
+    intensity: 3,
     task: {
       id: 'sample-1',
       name: 'Morning Stretch',
@@ -155,6 +163,8 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
     completed: 4,
     rate: 67,
     at: '11:15 AM',
+    date: '2026-05-02',
+    intensity: 2,
     task: {
       id: 'sample-2',
       name: 'Hydrate & Reset',
@@ -166,7 +176,65 @@ const SAMPLE_ITEMS: Record<string, unknown>[] = [
       order: 1,
     },
   },
+  {
+    name: 'Screen & Eye Rest',
+    label: 'Recovery',
+    title: '20-20-20 Eye Break',
+    instruction: 'Focus on a distant object for 20 seconds to relax eye strain.',
+    group: 'Focus recovery',
+    category: 'Vision',
+    animation: 'eye_rest',
+    provider: 'apple',
+    key: 'insights',
+    id: 'sample-3',
+    sourceId: 'focus-calendar',
+    deviceId: 'dev-3',
+    platform: 'linux',
+    state: 'connected',
+    status: 'verified',
+    enabled: true,
+    isCurrent: false,
+    order: 2,
+    intervalMinutes: 30,
+    durationSeconds: 20,
+    count: 5,
+    total: 8,
+    completed: 7,
+    rate: 88,
+    at: '1:30 PM',
+    date: '2026-05-03',
+    intensity: 4,
+    task: {
+      id: 'sample-3',
+      name: 'Screen & Eye Rest',
+      instruction: 'Focus on a distant object for 20 seconds to relax eye strain.',
+      intervalMinutes: 30,
+      durationSeconds: 20,
+      enabled: true,
+      animation: 'eye_rest',
+      order: 2,
+    },
+  },
 ];
+
+const SAMPLE_CALENDAR_DAYS: Record<string, unknown>[] = Array.from({ length: 14 }, (_, i) => {
+  const dayNum = i + 1;
+  const dd = String(dayNum).padStart(2, '0');
+  const intensities = [2, 3, 4, 1, 3, 2, 0, 3, 4, 2, 3, 4, 0, 0];
+  const intensity = intensities[i] ?? 0;
+  const isFuture = dayNum > 12;
+  return {
+    date: `2026-05-${dd}`,
+    status: isFuture ? 'future' : 'observed',
+    intensity,
+    label: `May ${dayNum}, 2026`,
+    completed: intensity * 2,
+    total: 8,
+    rate: Math.round((intensity / 4) * 100),
+    summaries: [{ provenance: 'real', completedCount: intensity * 2 }],
+    counts: { completedCount: intensity * 2 },
+  };
+});
 
 interface ComponentEntry {
   name: string;
@@ -486,23 +554,11 @@ function buildFileScope(program: t.Program): FileScope {
     const init = unwrapExpr(node.init) as t.Expression;
 
     // useState / React.useState initializers
-    if (t.isArrayPattern(node.id) && t.isIdentifier(node.id.elements[0]) && t.isCallExpression(init)) {
-      const callee = init.callee;
-      const isUseState =
-        (t.isIdentifier(callee) && callee.name === 'useState') ||
-        (t.isMemberExpression(callee) && t.isIdentifier(callee.property, { name: 'useState' }));
-      if (isUseState && init.arguments[0]) {
-        const stateName = node.id.elements[0].name;
-        const val = evalRawLiteral(init.arguments[0], constMap);
-        if (val !== UNKNOWN) {
-          if (val === null && DATA_COLLECTION_STATE_RE.test(stateName)) {
-            // Keep fetched data models unknown rather than forcing null/loading state
-          } else if (Array.isArray(val) && val.length === 0) {
-            // Leave empty initial data collections unknown so lists render sample items
-          } else {
-            stateEnv[stateName] = val;
-          }
-        }
+    if (t.isArrayPattern(node.id) && t.isIdentifier(node.id.elements[0]) && isUseStateCall(init)) {
+      const stateName = node.id.elements[0].name;
+      const val = resolveUseStateValue(init, stateName, (arg) => evalRawLiteral(arg, constMap));
+      if (shouldBindStateDefault(stateName, val)) {
+        stateEnv[stateName] = val;
       }
       return;
     }
@@ -537,6 +593,73 @@ function buildFileScope(program: t.Program): FileScope {
   };
 }
 
+function isUseStateCall(node: t.Node): node is t.CallExpression | t.OptionalCallExpression {
+  if (!t.isCallExpression(node) && !t.isOptionalCallExpression(node)) return false;
+  const callee = node.callee;
+  return (
+    t.isIdentifier(callee, { name: 'useState' }) ||
+    (t.isMemberExpression(callee) && t.isIdentifier(callee.property, { name: 'useState' }))
+  );
+}
+
+function shouldBindStateDefault(stateName: string, val: EvalResult): boolean {
+  if (val === UNKNOWN) return false;
+  if (val === null && DATA_COLLECTION_STATE_RE.test(stateName)) return false;
+  if (Array.isArray(val) && val.length === 0 && !EMPTY_DYNAMIC_LIST_RE.test(stateName)) return false;
+  return true;
+}
+
+function inferUseStateFallback(
+  init: t.CallExpression | t.OptionalCallExpression,
+  stateName: string
+): EvalResult {
+  if (DATA_COLLECTION_STATE_RE.test(stateName)) return UNKNOWN;
+  const arg0 = init.arguments[0] ? unwrapExpr(init.arguments[0]) : null;
+  if (arg0 && (t.isArrowFunctionExpression(arg0) || t.isFunctionExpression(arg0))) {
+    const retExpr = t.isBlockStatement(arg0.body)
+      ? arg0.body.body.find((s): s is t.ReturnStatement => t.isReturnStatement(s) && Boolean(s.argument))?.argument
+      : arg0.body;
+    const uRet = unwrapExpr(retExpr);
+    if (t.isConditionalExpression(uRet)) {
+      const alt = unwrapExpr(uRet.alternate);
+      if (t.isNullLiteral(alt)) return null;
+      if (t.isBooleanLiteral(alt, { value: false })) return false;
+    }
+  }
+  const typeParams: t.TSType[] = t.isTSTypeParameterInstantiation(init.typeArguments)
+    ? init.typeArguments.params
+    : [];
+  const hasNull = typeParams.some(
+    (p: t.TSType) =>
+      t.isTSNullKeyword(p) ||
+      (t.isTSUnionType(p) && p.types.some((m: t.TSType) => t.isTSNullKeyword(m)))
+  );
+  if (hasNull) return null;
+  const hasUndefined = typeParams.some(
+    (p: t.TSType) =>
+      t.isTSUndefinedKeyword(p) ||
+      (t.isTSUnionType(p) && p.types.some((m: t.TSType) => t.isTSUndefinedKeyword(m)))
+  );
+  if (hasUndefined) return undefined;
+  return UNKNOWN;
+}
+
+function resolveUseStateValue(
+  init: t.CallExpression | t.OptionalCallExpression,
+  stateName: string,
+  evalDirect: (node: t.Node) => EvalResult
+): EvalResult {
+  if (init.arguments.length === 0) {
+    return DATA_COLLECTION_STATE_RE.test(stateName) ? UNKNOWN : undefined;
+  }
+  const val = evalDirect(init.arguments[0]);
+  return val !== UNKNOWN ? val : inferUseStateFallback(init, stateName);
+}
+
+function isDateSentinel(val: unknown): val is { __retuneDate: true; timeText?: string } {
+  return Boolean(val && typeof val === 'object' && !Array.isArray(val) && (val as Record<string, unknown>).__retuneDate);
+}
+
 function evalRawLiteral(node: t.Node | null | undefined, constMap: Map<string, t.Expression>, depth = 0): EvalResult {
   if (depth > 4) return UNKNOWN;
   const u = unwrapExpr(node);
@@ -560,8 +683,15 @@ function evalRawLiteral(node: t.Node | null | undefined, constMap: Map<string, t
     }
     return out;
   }
-  if (t.isArrowFunctionExpression(u) && !t.isBlockStatement(u.body)) {
-    return evalRawLiteral(u.body, constMap, depth + 1);
+  if (t.isArrowFunctionExpression(u) || t.isFunctionExpression(u)) {
+    if (!t.isBlockStatement(u.body)) {
+      return evalRawLiteral(u.body, constMap, depth + 1);
+    }
+    for (const stmt of u.body.body) {
+      if (t.isReturnStatement(stmt) && stmt.argument) {
+        return evalRawLiteral(stmt.argument, constMap, depth + 1);
+      }
+    }
   }
   return UNKNOWN;
 }
@@ -667,6 +797,15 @@ function evalCallExpression(
     const recv = evalValue(callee.object, env, scope, depth + 1);
     if ((recv === null || recv === undefined) && t.isOptionalCallExpression(u)) return undefined;
     if (recv === UNKNOWN) return UNKNOWN;
+
+    if (isDateSentinel(recv)) {
+      if (method === 'toLocaleDateString') return 'Tuesday, May 12';
+      if (method === 'toLocaleTimeString') return recv.timeText ?? '10:30 AM';
+      if (method === 'toISOString') return '2026-05-12T10:30:00.000Z';
+      if (method === 'toLocaleString') return `May 12, 2026, ${recv.timeText ?? '10:30 AM'}`;
+      if (method === 'getTime' || method === 'valueOf') return 1778581800000;
+      return UNKNOWN;
+    }
 
     if (typeof recv === 'string') {
       const a0 = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : UNKNOWN;
@@ -892,6 +1031,11 @@ function evalValue(node: t.Node | null | undefined, env: Record<string, unknown>
     }
     return UNKNOWN;
   }
+  if (t.isNewExpression(u) && t.isIdentifier(u.callee, { name: 'Date' })) {
+    const arg0 = u.arguments[0] ? evalValue(u.arguments[0], env, scope, depth + 1) : UNKNOWN;
+    const timeText = typeof arg0 === 'string' && /\d{1,2}:\d{2}\s*(?:AM|PM)/i.test(arg0) ? arg0 : undefined;
+    return { __retuneDate: true, ...(timeText ? { timeText } : {}) };
+  }
   return UNKNOWN;
 }
 
@@ -910,15 +1054,27 @@ function shouldSkipUnknownGuard(node: t.Node): boolean {
       /(Modal|Dialog|BannerError|ErrorMsg)$/i.test(u.name)
     );
   }
-  if (t.isMemberExpression(u) && t.isIdentifier(u.property)) {
-    return /^(error|loading|unchecked|anyUnknown|truncated|pending)$/i.test(u.property.name);
+  if ((t.isMemberExpression(u) || t.isOptionalMemberExpression(u)) && t.isIdentifier(u.property)) {
+    const prop = u.property.name;
+    if (/^(error|loading|unchecked|anyUnknown|truncated|pending|unknown|reason)$/i.test(prop)) {
+      return true;
+    }
+    if (prop === 'length') {
+      const obj = unwrapExpr(u.object);
+      if (t.isIdentifier(obj) && /^(pending|truncated|errors|failures|attention|unchosen|unknownSourceIds|active|events)$/i.test(obj.name)) {
+        return true;
+      }
+      if ((t.isMemberExpression(obj) || t.isOptionalMemberExpression(obj)) && t.isIdentifier(obj.property)) {
+        return /^(pending|truncated|errors|failures|attention|unchosen|unknownSourceIds|active|events)$/i.test(obj.property.name);
+      }
+    }
   }
   if (t.isUnaryExpression(u) && u.operator === '!') {
     const arg = unwrapExpr(u.argument);
-    if (t.isIdentifier(arg) && /^(client|supported|authenticated|owned|ready|hasTasks|hasItems|hasEntries)$/i.test(arg.name)) {
+    if (t.isIdentifier(arg) && /^(client|supported|authenticated|owned|ready|hasTasks|hasItems|hasEntries|remindersEnabled)$/i.test(arg.name)) {
       return true;
     }
-    if (t.isMemberExpression(arg) && t.isIdentifier(arg.property, { name: 'length' })) {
+    if ((t.isMemberExpression(arg) || t.isOptionalMemberExpression(arg)) && t.isIdentifier(arg.property, { name: 'length' })) {
       return true;
     }
   }
@@ -926,19 +1082,18 @@ function shouldSkipUnknownGuard(node: t.Node): boolean {
     const l = unwrapExpr(u.left);
     const r = unwrapExpr(u.right);
     if (
-      u.operator === '>' &&
-      t.isMemberExpression(l) &&
-      t.isIdentifier(l.property, { name: 'length' }) &&
-      t.isMemberExpression(l.object) &&
-      t.isIdentifier(l.object.property, { name: 'truncated' })
+      l &&
+      ((u.operator === '>' && t.isNumericLiteral(r, { value: 0 })) ||
+        (u.operator === '>=' && t.isNumericLiteral(r, { value: 1 }))) &&
+      shouldSkipUnknownGuard(l)
     ) {
       return true;
     }
     if (u.operator === '===' || u.operator === '==') {
-      if (t.isNullLiteral(r) || (t.isStringLiteral(r) && /^(loading|error|expired|empty)$/i.test(r.value))) {
+      if (t.isNullLiteral(r) || (t.isStringLiteral(r) && /^(loading|error|expired|empty|paused|stopped|offline|disconnected|unavailable)$/i.test(r.value))) {
         return true;
       }
-      if (t.isMemberExpression(l) && t.isIdentifier(l.property, { name: 'length' }) && t.isNumericLiteral(r, { value: 0 })) {
+      if ((t.isMemberExpression(l) || t.isOptionalMemberExpression(l)) && t.isIdentifier(l.property, { name: 'length' }) && t.isNumericLiteral(r, { value: 0 })) {
         return true;
       }
       if (t.isIdentifier(l) && l.name === 'view' && t.isStringLiteral(r) && r.value !== 'ready') {
@@ -1011,6 +1166,7 @@ function extractExprText(node: t.Node | null | undefined, env: Record<string, un
   const evaluated = evalValue(node, env, scope);
   if (evaluated !== UNKNOWN) {
     if (evaluated === null || evaluated === undefined || typeof evaluated === 'boolean') return undefined;
+    if (isDateSentinel(evaluated)) return undefined;
     if (Array.isArray(evaluated)) return String(evaluated.length);
     if (typeof evaluated === 'object') {
       const rec = evaluated as Record<string, unknown>;
@@ -1026,23 +1182,44 @@ function extractExprText(node: t.Node | null | undefined, env: Record<string, un
     if (right !== undefined) return right;
   }
   if (t.isConditionalExpression(u)) {
+    const testVal = evalValue(u.test, env, scope);
+    if (testVal !== UNKNOWN) {
+      return extractExprText(testVal ? u.consequent : u.alternate, env, scope);
+    }
+    if (shouldSkipUnknownGuard(u.test)) {
+      return extractExprText(u.alternate, env, scope);
+    }
     return extractExprText(u.consequent, env, scope) ?? extractExprText(u.alternate, env, scope);
   }
   if (t.isTemplateLiteral(u)) {
     let out = '';
+    let resolvedExprs = 0;
     for (let i = 0; i < u.quasis.length; i++) {
       out += u.quasis[i].value.cooked ?? '';
       if (i < u.expressions.length) {
         const piece = extractExprText(u.expressions[i], env, scope);
-        if (piece) out += piece;
+        if (piece) {
+          out += piece;
+          resolvedExprs++;
+        }
       }
     }
+    if (u.expressions.length > 0 && resolvedExprs === 0) return undefined;
     const trimmed = out.replace(/\s+/g, ' ').trim();
     return trimmed || undefined;
   }
-  if (t.isIdentifier(u) && u.name !== 'children' && u.name !== 'error' && u.name !== 'message' && u.name !== 'className' && u.name !== 'style') {
+  if (
+    t.isIdentifier(u) &&
+    u.name !== 'children' &&
+    u.name !== 'error' &&
+    u.name !== 'message' &&
+    u.name !== 'reason' &&
+    u.name !== 'className' &&
+    u.name !== 'style'
+  ) {
+    if (u.name === 'line') return 'A steady pace for today.';
     if (/^(group|category|sectionLabel)$/i.test(u.name)) return 'Daily rituals';
-    if (/(Count|Total)$/i.test(u.name)) return '4';
+    if (/(Count|Total)$/i.test(u.name) || u.name === 'badge') return '4';
     if (/Minutes$/i.test(u.name)) return '45';
     if (/Seconds$/i.test(u.name)) return '30';
     if (/(Rate|Percent)$/i.test(u.name)) return '85';
@@ -1052,6 +1229,7 @@ function extractExprText(node: t.Node | null | undefined, env: Record<string, un
   }
   if ((t.isMemberExpression(u) || t.isOptionalMemberExpression(u)) && t.isIdentifier(u.property)) {
     const p = u.property.name;
+    if (t.isIdentifier(u.object, { name: 'presentation' }) && p === 'label') return 'May 2026';
     if (p === 'group' || p === 'category') return 'Daily rituals';
     if (p === 'name' || p === 'title' || p === 'label' || p === 'heading') return 'Morning Stretch';
     if (p === 'instruction' || p === 'description' || p === 'subtitle') return 'Sample description';
@@ -1090,7 +1268,7 @@ function extractAttrs(
       }
       if (!t.isObjectProperty(p)) continue;
       const k = propKeyName(p.key);
-      if (!SAFE_ATTR_NAMES.has(k)) continue;
+      if (!isSafeAttrName(k)) continue;
       const v = evalValue(p.value, ctx.env, ctx.scope);
       if (v !== UNKNOWN && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')) {
         attrs[k] = v;
@@ -1132,7 +1310,7 @@ function extractAttrs(
       continue;
     }
 
-    if (!SAFE_ATTR_NAMES.has(key)) continue;
+    if (!isSafeAttrName(key)) continue;
     if (!attr.value) {
       attrs[key] = true;
       continue;
@@ -1302,20 +1480,16 @@ function applyBlockDeclarations(fn: t.Function, ctx: BuildContext): BuildContext
       const init = unwrapExpr(decl.init);
       if (!init) continue;
 
-      if (t.isArrayPattern(decl.id) && (t.isCallExpression(init) || t.isOptionalCallExpression(init))) {
-        const callee = init.callee;
-        const isUseState =
-          t.isIdentifier(callee, { name: 'useState' }) ||
-          (t.isMemberExpression(callee) && t.isIdentifier(callee.property, { name: 'useState' }));
-        if (isUseState && t.isIdentifier(decl.id.elements[0])) {
+      if (t.isArrayPattern(decl.id) && isUseStateCall(init)) {
+        if (t.isIdentifier(decl.id.elements[0])) {
           const stateName = decl.id.elements[0].name;
-          const arg0 = init.arguments[0];
-          const initVal = arg0 ? evalValue(arg0, nextEnv, ctx.scope) : undefined;
-          if (
-            initVal !== UNKNOWN &&
-            !(Array.isArray(initVal) && initVal.length === 0 && DATA_COLLECTION_STATE_RE.test(stateName)) &&
-            !(initVal === null && !/^(error|err|loading|disabled)$/i.test(stateName))
-          ) {
+          const initVal = resolveUseStateValue(init, stateName, (arg) => {
+            const rawArg = unwrapExpr(arg);
+            return t.isArrowFunctionExpression(rawArg) || t.isFunctionExpression(rawArg)
+              ? evalCallbackReturn(rawArg, [], nextEnv, ctx.scope, 0)
+              : evalValue(arg, nextEnv, ctx.scope);
+          });
+          if (shouldBindStateDefault(stateName, initVal)) {
             nextEnv[stateName] = initVal;
           }
           continue;
@@ -1347,14 +1521,14 @@ function applyBlockDeclarations(fn: t.Function, ctx: BuildContext): BuildContext
 function getArrayItems(
   objNode: t.Node,
   ctx: BuildContext
-): { items: Array<unknown>; isDynamic: boolean } | null {
+): { items: Array<unknown>; isDynamic: boolean; limit?: number } | null {
   const u = unwrapExpr(objNode);
   if (!u) return null;
 
   if (t.isArrayExpression(u)) {
     return {
       isDynamic: false,
-      items: u.elements.slice(0, 6).map((el) => {
+      items: u.elements.slice(0, 7).map((el) => {
         if (!el || t.isSpreadElement(el)) return SAMPLE_ITEMS[0];
         if (t.isObjectExpression(el)) {
           const rec: Record<string, unknown> = {};
@@ -1381,8 +1555,16 @@ function getArrayItems(
     const arr = ctx.scope.arrayMap.get(u.name);
     if (arr) return getArrayItems(arr, ctx);
     const val = evalValue(u, ctx.env, ctx.scope);
-    if (Array.isArray(val)) return { isDynamic: false, items: val.slice(0, 6) };
+    if (Array.isArray(val)) return { isDynamic: false, items: val.slice(0, u.name === 'days' ? 14 : 7) };
+    if (EMPTY_DYNAMIC_LIST_RE.test(u.name)) return { isDynamic: false, items: [] };
+    if (u.name === 'days') return { isDynamic: false, items: SAMPLE_CALENDAR_DAYS, limit: SAMPLE_CALENDAR_DAYS.length };
     return { isDynamic: true, items: SAMPLE_ITEMS };
+  }
+
+  if (t.isLogicalExpression(u) && (u.operator === '??' || u.operator === '||')) {
+    const evaluated = evalValue(u, ctx.env, ctx.scope);
+    if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 7) };
+    return getArrayItems(u.left, ctx);
   }
 
   if (t.isCallExpression(u) && t.isMemberExpression(u.callee) && t.isIdentifier(u.callee.property)) {
@@ -1409,19 +1591,25 @@ function getArrayItems(
       const target = evalValue(u.callee.object, ctx.env, ctx.scope);
       if (typeof target === 'string') {
         const sep = u.arguments[0] ? evalValue(u.arguments[0], ctx.env, ctx.scope) : '\n';
-        return { isDynamic: false, items: target.split(typeof sep === 'string' ? sep : '\n').slice(0, 6) };
+        return { isDynamic: false, items: target.split(typeof sep === 'string' ? sep : '\n').slice(0, 7) };
       }
       return { isDynamic: true, items: ['Workday · 9:00 AM – 5:00 PM', 'Focus breaks enabled'] };
     }
     if (m === 'filter' || m === 'sort' || m === 'slice') {
       const evaluated = evalValue(u, ctx.env, ctx.scope);
-      if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 6) };
+      if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 7) };
       return getArrayItems(u.callee.object, ctx);
     }
   }
 
   const evaluated = evalValue(u, ctx.env, ctx.scope);
-  if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 6) };
+  if (Array.isArray(evaluated)) return { isDynamic: false, items: evaluated.slice(0, 7) };
+
+  const tailName = (t.isMemberExpression(u) || t.isOptionalMemberExpression(u)) && t.isIdentifier(u.property)
+    ? u.property.name
+    : '';
+  if (EMPTY_DYNAMIC_LIST_RE.test(tailName)) return { isDynamic: false, items: [] };
+  if (tailName === 'days') return { isDynamic: false, items: SAMPLE_CALENDAR_DAYS, limit: SAMPLE_CALENDAR_DAYS.length };
 
   return { isDynamic: true, items: SAMPLE_ITEMS };
 }
@@ -1466,7 +1654,7 @@ function expandArrayCall(expr: t.CallExpression, ctx: BuildContext): PreviewNode
   if (!retExpr) return [];
 
   const out: PreviewNode[] = [];
-  const limit = resolved.isDynamic ? 2 : 6;
+  const limit = resolved.limit ?? (resolved.isDynamic ? 3 : 7);
   const items = resolved.items.slice(0, limit);
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -1542,15 +1730,13 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
       jsxVars: nextVars,
       depth: ctx.depth + 1,
     });
-    if (inlineTree.length > 0) {
-      if (callerClass) {
-        inlineTree[0] = {
-          ...inlineTree[0],
-          className: [inlineTree[0].className, callerClass].filter(Boolean).join(' '),
-        };
-      }
-      return inlineTree;
+    if (inlineTree.length > 0 && callerClass) {
+      inlineTree[0] = {
+        ...inlineTree[0],
+        className: [inlineTree[0].className, callerClass].filter(Boolean).join(' '),
+      };
     }
+    return inlineTree;
   }
 
   // Inline imported components across files when resolveImport is supplied
@@ -1624,6 +1810,7 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
           ctx.nodeCount.value += countPreviewNodes([foreign]);
           return [foreign];
         }
+        return [];
       }
     }
   }
@@ -1691,6 +1878,13 @@ function buildElementNode(el: t.JSXElement, ctx: BuildContext): PreviewNode[] {
           children: passed.children,
         },
       ];
+    }
+
+    if (
+      !callerClass &&
+      /^(BreakHost|.*(?:Host|Portal|Modal|Dialog|Overlay|Toaster|Provider|Tracker|Listener))$/i.test(tag)
+    ) {
+      return [];
     }
 
     // Minimal representative badge for external leaf components without resolveImport
@@ -1905,6 +2099,9 @@ function expandExpr(node: t.Node | null | undefined, ctx: BuildContext): Preview
     if (cond === true) return expandExpr(u.consequent, ctx);
     if (cond === false) return expandExpr(u.alternate, ctx);
     if (isModalOverlayNode(u.consequent) && !isModalOverlayNode(u.alternate)) {
+      return expandExpr(u.alternate, { ...ctx, depth: ctx.depth + 1 });
+    }
+    if (shouldSkipUnknownGuard(u.test)) {
       return expandExpr(u.alternate, { ...ctx, depth: ctx.depth + 1 });
     }
     const left = expandExpr(u.consequent, { ...ctx, depth: ctx.depth + 1 });

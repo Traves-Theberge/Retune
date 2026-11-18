@@ -128,6 +128,7 @@ export function Stage({
   const elementRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ width: 800, height: 600 });
+  const [frameInnerWidth, setFrameInnerWidth] = useState(0);
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const [cssSize, setCssSize] = useState<Size | null>(null);
   const [toolbarMeasured, setToolbarMeasured] = useState<Size | null>(null);
@@ -160,11 +161,16 @@ export function Stage({
 
   const measure = () => {
     const c = containerRef.current;
+    const f = frameRef.current;
     const e = elementRef.current;
     const t = toolbarRef.current;
     if (!c) return;
     const next = { width: c.clientWidth, height: c.clientHeight };
     setSize((prev) => (sameSize(prev, next) ? prev : next));
+    if (f) {
+      const nextFrameWidth = f.clientWidth;
+      setFrameInnerWidth((prev) => (prev === nextFrameWidth ? prev : nextFrameWidth));
+    }
     if (e) {
       const targetDom =
         (selectedDomRef.current && e.contains(selectedDomRef.current) ? selectedDomRef.current : null) ??
@@ -173,7 +179,17 @@ export function Stage({
         e;
       const cr = c.getBoundingClientRect();
       const er = targetDom.getBoundingClientRect();
-      const rect = { left: er.left - cr.left, top: er.top - cr.top, width: er.width, height: er.height };
+      const fr = f && f.contains(targetDom) ? f.getBoundingClientRect() : null;
+      const visLeft = fr ? Math.max(er.left, fr.left) : er.left;
+      const visTop = fr ? Math.max(er.top, fr.top) : er.top;
+      const visRight = fr ? Math.min(er.right, fr.right) : er.right;
+      const visBottom = fr ? Math.min(er.bottom, fr.bottom) : er.bottom;
+      const rect = {
+        left: visLeft - cr.left,
+        top: visTop - cr.top,
+        width: Math.max(16, visRight - visLeft),
+        height: Math.max(16, visBottom - visTop),
+      };
       setAnchor((prev) => (sameRect(prev, rect) ? prev : rect));
       const scale = e.querySelector('.retune-preview-scope')?.contains(targetDom) ? activeScaleRef.current || 1 : 1;
       const measuredCss = {
@@ -426,10 +442,11 @@ export function Stage({
         ? 'w-full max-w-6xl'
         : viewportPreset.widthClass
       : `${viewportPreset.widthClass} max-w-full`;
-  const availInnerWidth = Math.max(320, (size.width || 800) - 88);
+  const targetDesktopWidth = 1200;
+  const effectiveFrameWidth = frameInnerWidth > 0 ? frameInnerWidth : Math.max(320, (size.width || 800) - 50);
   const richZoom =
     isRichLayout && !matrixMode && viewportPreset.id === 'responsive'
-      ? Math.min(1, Math.max(0.45, availInnerWidth / 1080))
+      ? Math.min(1, Math.max(0.45, effectiveFrameWidth / targetDesktopWidth))
       : 1;
   activeScaleRef.current = viewportPreset.id === 'responsive' && richZoom < 0.99 ? richZoom : 1;
   const a11ySmall = cssSize
@@ -454,7 +471,7 @@ export function Stage({
       ? {
           transform: 'translateZ(0)',
           ...(viewportPreset.id === 'responsive' && richZoom < 0.99
-            ? { width: '1080px', zoom: richZoom }
+            ? { width: `${targetDesktopWidth}px`, zoom: richZoom }
             : {}),
         }
       : {}),
@@ -473,7 +490,7 @@ export function Stage({
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         e.preventDefault();
       }}
-      className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-6 pt-6 pb-16 transition-colors ${
+      className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-6 pt-12 pb-20 transition-colors ${
         tone === 'light' ? 'bg-stage-light' : 'bg-stage-dark'
       }`}
     >
@@ -502,7 +519,7 @@ export function Stage({
         onScroll={measure}
         className={`relative flex rounded-2xl border shadow-2xl transition-all duration-150 ${frameWidth} ${
           isRichLayout && !matrixMode
-            ? 'max-h-[calc(100vh-160px)] min-h-[320px] items-start justify-start overflow-auto p-5'
+            ? 'max-h-[calc(100vh-230px)] min-h-[320px] items-start justify-start overflow-y-auto overflow-x-hidden p-0'
             : 'min-h-[280px] items-center justify-center p-10'
         } ${
           tone === 'light' ? 'border-frame-dark/10 bg-frame-light' : 'border-line bg-frame-dark'
@@ -622,7 +639,11 @@ export function Stage({
         )}
       </div>
 
-      <p className={`relative mt-3 text-[11px] ${tone === 'light' ? 'text-frame-dark/50' : 'text-subtle'}`}>
+      <p
+        className={`relative ${isRichLayout && !matrixMode ? 'mt-9' : 'mt-3'} text-[11px] ${
+          tone === 'light' ? 'text-frame-dark/50' : 'text-subtle'
+        }`}
+      >
         Approximate preview — classes only
       </p>
 

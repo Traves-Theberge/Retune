@@ -274,6 +274,73 @@ describe('extractPreviewTree', () => {
     expect(json).toContain('"text":"ACTIVE"');
     expect(json).toContain('"text":"PAUSED"');
   });
+
+  it('renders 3-column dynamic grids, 14-day calendars, date formatting, null arrow useState, and inactive ternaries', () => {
+    const src = `
+      import { useState } from 'react';
+      export function Dashboard({ items, days, events, s, presentation, clock, line, taskId, badge }: any) {
+        const [settings] = useState<string | null>(() => {
+          const url = new URL(window.location.href);
+          return url.pathname === '/settings' ? 'general' : null;
+        });
+        const [filterTask] = useState<string | undefined>();
+        return (
+          <div className="dash app-shell">
+            <p className="date">{new Date(clock).toLocaleDateString()}</p>
+            <p className="time">{new Date(clock).toLocaleTimeString()}</p>
+            <p className="iso">{new Date(clock).toISOString()}</p>
+            <p className="headline">{line}</p>
+            <h3 className="month">{presentation.label}</h3>
+            <span className="tab-badge">{badge}</span>
+            <button>{s.state === 'paused' ? 'Resume schedule' : 'Pause for an hour'}</button>
+            <span className="status">{s.reason ? \`Deferred · \${s.reason.replaceAll('_', ' ')}\` : 'Your rhythm is taken care of'}</span>
+            {s.pending.length > 0 && <div className="pending-banner">Pending</div>}
+            {events.attention.map((n: string, i: number) => <p key={i}>{n}</p>)}
+            {settings && <section className="settings-modal">Settings Drawer</section>}
+            {taskId && <span className="filter-pill">Filter</span>}
+            {filterTask && <span className="task-pill">Task</span>}
+            {!settings && <main className="main-today">Active View</main>}
+            <div className="cards">
+              {items.map((item: any) => <article key={item.id}>{item.name}</article>)}
+            </div>
+            <div className="calendar">
+              {days.map((day: any) => (
+                <button key={day.date} data-status={day.status} data-intensity={day.intensity}>
+                  {Number(day.date.slice(-2))}
+                </button>
+              ))}
+            </div>
+            <BreakHost />
+          </div>
+        );
+      }
+    `;
+    const tree = extractPreviewTree(src)!;
+    const json = JSON.stringify(tree);
+    expect(json).toContain('"text":"Tuesday, May 12"');
+    expect(json).toContain('"text":"10:30 AM"');
+    expect(json).toContain('"text":"2026-05-12T10:30:00.000Z"');
+    expect(json).toContain('"text":"A steady pace for today."');
+    expect(json).toContain('"text":"May 2026"');
+    expect(json).toContain('"text":"4"');
+    expect(json).toContain('"text":"Pause for an hour"');
+    expect(json).toContain('"text":"Your rhythm is taken care of"');
+    expect(json).toContain('Active View');
+    expect(json).not.toContain('Resume schedule');
+    expect(json).not.toContain('Deferred ·');
+    expect(json).not.toContain('Pending');
+    expect(json).not.toContain('Settings Drawer');
+    expect(json).not.toContain('filter-pill');
+    expect(json).not.toContain('task-pill');
+    expect(json).not.toContain('retune-component-stub');
+    expect(json).toContain('Morning Stretch');
+    expect(json).toContain('Hydrate & Reset');
+    expect(json).toContain('Screen & Eye Rest');
+    const cal = tree.children.find((c) => c.className === 'calendar');
+    expect(cal?.children).toHaveLength(14);
+    expect(cal?.children[0]?.attrs?.['data-intensity']).toBe(2);
+    expect(cal?.children[13]?.attrs?.['data-status']).toBe('future');
+  });
 });
 
 describe('extractComponentName', () => {

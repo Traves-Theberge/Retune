@@ -109,6 +109,8 @@ export function Badge({ label }: BadgeProps) { return <div className="p-1"><span
       expect(meta.previewTree?.tag).toBe('section');
       expect(meta.previewTree?.className).toBe('panel-box');
       expect(meta.workspaceCss).toContain('.retune-preview-scope .panel-box');
+      expect(meta.workspaceCss).toContain('.retune-preview-scope > .tasks-page');
+      expect(meta.workspaceCss).toContain('padding: 48px 40px');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

@@ -168,8 +168,10 @@ export function scopePreviewCss(rawCss: string, scopeClass = '.retune-preview-sc
 }
 
 const PREVIEW_SHELL_OVERRIDES =
+  '.retune-preview-scope { box-sizing: border-box; }\n' +
   '.retune-preview-scope .app-shell > .sidebar { position: sticky; top: 0; height: auto; min-height: 100%; align-self: stretch; }\n' +
-  '.retune-preview-scope .main-column { margin-left: 0; }';
+  '.retune-preview-scope .main-column { margin-left: 0; }\n' +
+  '.retune-preview-scope > .tasks-page, .retune-preview-scope > .insights-page, .retune-preview-scope > .stda-page, .retune-preview-scope > .connections-hub, .retune-preview-scope > .settings-page { padding: 48px 40px; max-width: 1440px; margin: 0 auto; box-sizing: border-box; }';
 
 export function collectWorkspaceCss(entryFile: string, sourceText: string): string {
   if (!entryFile) return '';
